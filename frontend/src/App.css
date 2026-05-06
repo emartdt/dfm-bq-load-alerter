@@ -1,0 +1,81 @@
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+  background: #f7f7f9;
+  color: #1a1a1a;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1a1a1a;
+    color: #f0f0f0;
+  }
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.meta {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.badge-ok { background: #2e7d32; color: #fff; }
+.badge-error { background: #c62828; color: #fff; }
+.badge-unknown { background: #757575; color: #fff; }
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  align-items: center;
+}
+
+.severity {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  text-align: center;
+}
+
+.severity-info { background: #e3f2fd; color: #1565c0; }
+.severity-warning { background: #fff8e1; color: #f57c00; }
+.severity-error { background: #ffebee; color: #c62828; }
+
+.occurred {
+  color: #888;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  color: #c62828;
+}
