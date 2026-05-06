@@ -53,19 +53,22 @@ DFM(datafabric-manager) 시스템에서 BigQuery 적재(load) 작업 상태를 �
 - **IngressClass**: `nginx`
 - **TLS**: 와일드카드 시크릿 `tls-wildcard-shinsegae-ai-2026` 재사용 (`datafabric-alert` 네임스페이스에 동일 시크릿이 존재해야 함)
 
-### 릴리스 플로우
+### 릴리스 플로우 (2단계)
 
-1. `main` 에 머지 후 GitHub UI 에서 `vX.Y.Z` 태그로 release publish
-2. `.github/workflows/release.yml` 이 자동 실행:
-   - GCP Artifact Registry 로 이미지 push (`<host>/<project>/<repo>/dfm-bq-load-alerter:vX.Y.Z`)
-   - `helm upgrade --install` 으로 onprem-prd 클러스터에 배포
+GH-hosted runner 가 사내 Rancher API 에 도달할 수 없어 빌드와 배포를 분리.
 
-### 필요한 GitHub Secrets / Variables
+1. **이미지 빌드·푸시 (자동)** — `main` 에 머지 후 GitHub UI 에서 `vX.Y.Z` 로 release publish 시 `.github/workflows/release.yml` 이 GCP Artifact Registry 로 이미지를 push.
+2. **클러스터 배포 (수동)** — 사내망 단말에서:
+   ```bash
+   ./scripts/deploy.sh 0.1.0
+   ```
+   상세는 [`docs/deployment.md`](docs/deployment.md) 참조.
+
+### 필요한 GitHub Secrets / Variables (이미지 푸시용)
 
 | 종류 | 이름 | 용도 |
 |------|------|------|
 | secret | `GCP_SA_KEY` | Artifact Registry push 권한 SA JSON 키 |
-| secret | `KUBE_CONFIG` | onprem-prd kubeconfig (base64 인코딩) |
 | variable | `AR_HOST` | 예: `asia-northeast3-docker.pkg.dev` |
 | variable | `AR_PROJECT` | GCP 프로젝트 ID |
 | variable | `AR_REPO` | Artifact Registry 리포지토리 이름 |
