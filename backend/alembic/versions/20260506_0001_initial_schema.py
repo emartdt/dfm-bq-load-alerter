@@ -24,13 +24,30 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    frequency_enum = sa.Enum("daily", "monthly", name="frequency_enum")
-    check_status_enum = sa.Enum("ok", "fail", "insufficient_history", name="check_status_enum")
-    trigger_kind_enum = sa.Enum("check", "report", "ack", name="trigger_kind_enum")
-    channel_enum = sa.Enum("email", "teams", "ack", name="channel_enum")
-    event_status_enum = sa.Enum("sent", "failed", "skipped", name="event_status_enum")
-    user_role_enum = sa.Enum("admin", "viewer", name="user_role_enum")
-    warning_severity_enum = sa.Enum("info", "warning", "error", name="warning_severity_enum")
+    # Enum 객체에 create_type=False 를 두어 op.create_table 의 column 추가 시
+    # SQLAlchemy 가 자동으로 CREATE TYPE 을 두 번째로 시도하지 않도록 한다.
+    # CREATE TYPE 은 본 함수 시작에서 .create(checkfirst=True) 로 명시 1회 수행.
+    frequency_enum = postgresql.ENUM(
+        "daily", "monthly", name="frequency_enum", create_type=False
+    )
+    check_status_enum = postgresql.ENUM(
+        "ok", "fail", "insufficient_history", name="check_status_enum", create_type=False
+    )
+    trigger_kind_enum = postgresql.ENUM(
+        "check", "report", "ack", name="trigger_kind_enum", create_type=False
+    )
+    channel_enum = postgresql.ENUM(
+        "email", "teams", "ack", name="channel_enum", create_type=False
+    )
+    event_status_enum = postgresql.ENUM(
+        "sent", "failed", "skipped", name="event_status_enum", create_type=False
+    )
+    user_role_enum = postgresql.ENUM(
+        "admin", "viewer", name="user_role_enum", create_type=False
+    )
+    warning_severity_enum = postgresql.ENUM(
+        "info", "warning", "error", name="warning_severity_enum", create_type=False
+    )
 
     bind = op.get_bind()
     for e in (
