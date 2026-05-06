@@ -4,15 +4,9 @@ on:
   release:
     types: [published]
 
-env:
-  CHART_PATH: charts/dfm-bq-load-alerter
-  RELEASE_NAME: dfm-bq-load-alerter
-  NAMESPACE: datafabric-alert
-  KUBE_CONTEXT: onprem-prd
-
 jobs:
-  publish:
-    name: Build, push image, helm upgrade
+  publish-image:
+    name: Build & push image to Artifact Registry
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,32 +45,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Setup kubectl & helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.16.3
-
-      - name: Load kubeconfig
+      - name: Summary
         run: |
-          mkdir -p "$HOME/.kube"
-          printf '%s' "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-
-      - name: Ensure namespace
-        run: |
-          kubectl --context "${KUBE_CONTEXT}" get ns "${NAMESPACE}" \
-            || kubectl --context "${KUBE_CONTEXT}" create ns "${NAMESPACE}"
-
-      - name: Helm upgrade
-        run: |
-          helm upgrade --install "${RELEASE_NAME}" "${CHART_PATH}" \
-            --kube-context "${KUBE_CONTEXT}" \
-            --namespace "${NAMESPACE}" \
-            --set image.repository="${{ steps.meta.outputs.image }}" \
-            --set image.tag="${{ steps.meta.outputs.tag }}" \
-            --wait --timeout 5m
-
-      - name: Verify rollout
-        run: |
-          kubectl --context "${KUBE_CONTEXT}" -n "${NAMESPACE}" \
-            rollout status deploy/"${RELEASE_NAME}" --timeout=3m
+          {
+            echo "## 이미지 푸시 완료"
+            echo
+            echo "- \`${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}\`"
+            echo "- \`${{ steps.meta.outputs.image }}:latest\`"
+            echo
+            echo "### 다음 단계"
+            echo "사내망에서 다음 스크립트를 실행해 클러스터에 배포:"
+            echo
+            echo "\`\`\`bash"
+            echo "./scripts/deploy.sh ${{ steps.meta.outputs.tag }}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
