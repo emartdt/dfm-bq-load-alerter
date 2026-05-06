@@ -16,15 +16,22 @@ GitHub-hosted runner 가 사내 Rancher API(`rancher.shinsegae.ai`, 10.253.71.x)
 - 사내망 접속 가능 (VPN 또는 사내 단말)
 - 대상 네임스페이스: `datafabric-alert`
 
-### 와일드카드 TLS 시크릿 사전 복제 (최초 1회)
+### 사전 복제 시크릿 (최초 1회)
 
-`tls-wildcard-shinsegae-ai-2026` 시크릿이 `datafabric-alert` 네임스페이스에 존재해야 ingress TLS 가 동작한다.
+`datafabric-alert` 네임스페이스에 다음 두 시크릿이 존재해야 한다. 둘 다 `datafabric-platform` 네임스페이스에서 동일 이름으로 운영 중이므로 그대로 복제.
+
+| 이름 | 용도 |
+|------|------|
+| `tls-wildcard-shinsegae-ai-2026` | ingress 와일드카드 TLS |
+| `asia-gcr-global-secret` | Artifact Registry image pull (`asia-northeast3-docker.pkg.dev`) |
 
 ```bash
-kubectl --context onprem-prd -n datafabric-platform get secret tls-wildcard-shinsegae-ai-2026 -o yaml \
-  | grep -v '^\s*namespace:' \
-  | sed 's/^\(metadata:\)$/\1\n  namespace: datafabric-alert/' \
-  | kubectl --context onprem-prd apply -f -
+for s in tls-wildcard-shinsegae-ai-2026 asia-gcr-global-secret; do
+  kubectl --context onprem-prd -n datafabric-platform get secret "$s" -o yaml \
+    | grep -v '^\s*namespace:' \
+    | sed 's/^\(metadata:\)$/\1\n  namespace: datafabric-alert/' \
+    | kubectl --context onprem-prd apply -f -
+done
 ```
 
 > 시크릿 만료/갱신 시 동일 절차 반복. 자동 동기화는 후속 작업(reflector 등) TODO.
