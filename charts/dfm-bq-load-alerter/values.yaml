@@ -4,7 +4,8 @@ image:
   tag: ""  # 미설정 시 Chart.appVersion 사용
   pullPolicy: IfNotPresent
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: asia-gcr-global-secret
 
 replicaCount: 1
 
