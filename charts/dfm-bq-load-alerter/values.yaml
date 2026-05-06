@@ -1,0 +1,66 @@
+image:
+  # Artifact Registry 경로 — release.yml 에서 --set 으로 주입
+  repository: REPLACE_AT_DEPLOY/dfm-bq-load-alerter
+  tag: ""  # 미설정 시 Chart.appVersion 사용
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: dfm-alert.shinsegae.ai
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: tls-wildcard-shinsegae-ai-2026
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 10
+    periodSeconds: 20
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+env:
+  DFM_ALERT_LOG_LEVEL: INFO
+
+serviceAccount:
+  create: true
+  name: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

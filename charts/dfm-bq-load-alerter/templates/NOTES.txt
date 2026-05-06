@@ -1,0 +1,9 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} 가 네임스페이스 "{{ .Release.Namespace }}" 에 배포되었습니다.
+
+배포 확인:
+  kubectl --context onprem-prd -n {{ .Release.Namespace }} rollout status deploy/{{ include "dfm-bq-load-alerter.fullname" . }}
+
+{{- if .Values.ingress.enabled }}
+접속 URL:
+  https://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+{{- end }}
