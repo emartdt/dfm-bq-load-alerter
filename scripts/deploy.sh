@@ -60,7 +60,7 @@ helm upgrade --install "${RELEASE_NAME}" "${CHART_PATH}" \
   --set image.repository="${IMAGE}" \
   --set image.tag="${VERSION}" \
   --wait --timeout 5m \
-  "${EXTRA_ARGS[@]}"
+  ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 
 echo
 echo "→ rollout 검증:"
