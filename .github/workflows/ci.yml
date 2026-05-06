@@ -17,12 +17,13 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-      - name: Install
-        run: uv pip install --system --no-cache ".[dev]"
+          python-version: "3.13"
+      - name: Sync
+        run: uv sync --all-extras --frozen
       - name: Ruff
-        run: ruff check .
+        run: uv run ruff check .
       - name: Pytest
-        run: pytest -q
+        run: uv run pytest -q
 
   frontend:
     name: Frontend lint & build
