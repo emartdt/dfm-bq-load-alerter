@@ -7,6 +7,8 @@ image:
 imagePullSecrets:
   - name: asia-gcr-global-secret
 
+# replicaCount 권장값은 1입니다. 백엔드는 PG advisory lock 으로 leader-election 을
+# 수행하므로 2 이상이어도 cron 1회만 실행되지만, 운영 단순성을 위해 1을 유지하세요.
 replicaCount: 1
 
 service:
@@ -55,12 +57,63 @@ probes:
     initialDelaySeconds: 5
     periodSeconds: 10
 
+# Plain (non-secret) configuration injected as DFM_ALERT_* env vars.
 env:
   DFM_ALERT_LOG_LEVEL: INFO
+  DFM_ALERT_ENVIRONMENT: production
+  DFM_ALERT_SCHEDULER_TIMEZONE: Asia/Seoul
+  DFM_ALERT_POSTGRES_SESSION_TIMEZONE: Asia/Seoul
+  DFM_ALERT_DEFAULT_THRESHOLD_PERCENT: "25"
+  DFM_ALERT_RETENTION_DAYS: "90"
+  DFM_ALERT_CONDITION_QUERY_MAX_BYTES: "104857600"
+
+# PostgreSQL — Cloud SQL (datafabric-manager 동일 인스턴스, DB=dfm_bq_load_alerter)
+postgresql:
+  # K8s Secret containing key DFM_ALERT_POSTGRES_DSN
+  # (postgresql+asyncpg://user:pass@host:5432/dfm_bq_load_alerter)
+  dsnSecretRef: dfm-bq-load-alerter-postgres
+
+# BigQuery service account
+bigquery:
+  projectId: ""
+  datasetList: ""  # comma-separated
+  serviceAccount:
+    secretRef: dfm-bq-load-alerter-gcp-sa
+    secretKey: key.json
+    mountPath: /var/secrets/bq-sa
+
+# Keycloak OIDC
+oidc:
+  issuer: ""
+  clientId: ""
+  clientSecretRef: dfm-bq-load-alerter-oidc  # K8s Secret with DFM_ALERT_OIDC_CLIENT_SECRET
+  requiredRole: dfm-alerter-admin
+  jwksCacheTtl: "3600"
+  jwtLeewaySeconds: "60"
+
+# SMTP relay
+smtp:
+  host: ""
+  port: "587"
+  user: ""
+  passwordSecretRef: dfm-bq-load-alerter-smtp  # K8s Secret with DFM_ALERT_SMTP_PASSWORD
+  fromAddr: ""
+  useStarttls: "true"
+
+# Teams default webhook (BO 에서 등록 가능, 기본값은 K8s Secret 참조)
+teams:
+  defaultWebhookSecretRef: ""
+
+# Bootstrap token (PR-5 미머지 시 한정 — OIDC 정상 로드 시 무시됨)
+bootstrapToken:
+  enabled: false
+  secretRef: dfm-bq-load-alerter-bootstrap  # Secret with DFM_ALERT_BOOTSTRAP_TOKEN
 
 serviceAccount:
   create: true
   name: ""
+  # webhook 등록 시 K8s Secret 자동 생성을 위해 secrets RBAC 부여
+  secretsRoleEnabled: true
 
 nodeSelector: {}
 tolerations: []

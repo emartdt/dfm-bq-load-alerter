@@ -17,7 +17,13 @@ FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DFM_ALERT_STATIC_DIR=/app/static
+    DFM_ALERT_STATIC_DIR=/app/static \
+    TZ=Asia/Seoul
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime
 
 # uv: 빠른 의존성 설치
 COPY --from=ghcr.io/astral-sh/uv:0.5.8 /uv /usr/local/bin/uv

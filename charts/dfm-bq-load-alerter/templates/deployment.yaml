@@ -21,6 +21,12 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.bigquery.serviceAccount.secretRef }}
+      volumes:
+        - name: bq-sa
+          secret:
+            secretName: {{ .Values.bigquery.serviceAccount.secretRef }}
+      {{- end }}
       containers:
         - name: app
           image: {{ include "dfm-bq-load-alerter.image" . | quote }}
@@ -46,6 +52,82 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            {{- if .Values.postgresql.dsnSecretRef }}
+            - name: DFM_ALERT_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.dsnSecretRef }}
+                  key: DFM_ALERT_POSTGRES_DSN
+            {{- end }}
+            {{- if .Values.bigquery.projectId }}
+            - name: DFM_ALERT_BQ_PROJECT_ID
+              value: {{ .Values.bigquery.projectId | quote }}
+            {{- end }}
+            {{- if .Values.bigquery.datasetList }}
+            - name: DFM_ALERT_BQ_DATASET_LIST
+              value: {{ .Values.bigquery.datasetList | quote }}
+            {{- end }}
+            {{- if .Values.bigquery.serviceAccount.secretRef }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: {{ printf "%s/%s" .Values.bigquery.serviceAccount.mountPath .Values.bigquery.serviceAccount.secretKey | quote }}
+            - name: DFM_ALERT_BQ_CREDENTIALS_PATH
+              value: {{ printf "%s/%s" .Values.bigquery.serviceAccount.mountPath .Values.bigquery.serviceAccount.secretKey | quote }}
+            {{- end }}
+            {{- if .Values.oidc.issuer }}
+            - name: DFM_ALERT_OIDC_ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            - name: DFM_ALERT_OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            - name: DFM_ALERT_OIDC_REQUIRED_ROLE
+              value: {{ .Values.oidc.requiredRole | quote }}
+            - name: DFM_ALERT_OIDC_JWKS_CACHE_TTL
+              value: {{ .Values.oidc.jwksCacheTtl | quote }}
+            - name: DFM_ALERT_OIDC_JWT_LEEWAY_SECONDS
+              value: {{ .Values.oidc.jwtLeewaySeconds | quote }}
+            {{- if .Values.oidc.clientSecretRef }}
+            - name: DFM_ALERT_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.clientSecretRef }}
+                  key: DFM_ALERT_OIDC_CLIENT_SECRET
+            {{- end }}
+            {{- end }}
+            {{- if .Values.smtp.host }}
+            - name: DFM_ALERT_SMTP_HOST
+              value: {{ .Values.smtp.host | quote }}
+            - name: DFM_ALERT_SMTP_PORT
+              value: {{ .Values.smtp.port | quote }}
+            - name: DFM_ALERT_SMTP_USER
+              value: {{ .Values.smtp.user | quote }}
+            - name: DFM_ALERT_SMTP_FROM_ADDR
+              value: {{ .Values.smtp.fromAddr | quote }}
+            - name: DFM_ALERT_SMTP_USE_STARTTLS
+              value: {{ .Values.smtp.useStarttls | quote }}
+            {{- if .Values.smtp.passwordSecretRef }}
+            - name: DFM_ALERT_SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.passwordSecretRef }}
+                  key: DFM_ALERT_SMTP_PASSWORD
+            {{- end }}
+            {{- end }}
+            {{- if .Values.teams.defaultWebhookSecretRef }}
+            - name: DFM_ALERT_TEAMS_DEFAULT_WEBHOOK_SECRET_REF
+              value: {{ .Values.teams.defaultWebhookSecretRef | quote }}
+            {{- end }}
+            {{- if .Values.bootstrapToken.enabled }}
+            - name: DFM_ALERT_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrapToken.secretRef }}
+                  key: DFM_ALERT_BOOTSTRAP_TOKEN
+            {{- end }}
+          {{- if .Values.bigquery.serviceAccount.secretRef }}
+          volumeMounts:
+            - name: bq-sa
+              mountPath: {{ .Values.bigquery.serviceAccount.mountPath }}
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
