@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     default_threshold_percent: float = Field(default=25.0)
     retention_days: int = Field(default=90)
     scheduler_timezone: str = Field(default="Asia/Seoul")
+    scheduler_enabled: bool = Field(
+        default=True,
+        description="Disable in tests/local where APScheduler must not start.",
+    )
+    leader_ping_seconds: int = Field(default=30, ge=5, le=300)
+    misfire_grace_check_seconds: int = Field(default=120)
+    misfire_grace_report_seconds: int = Field(default=600)
     condition_query_max_bytes: int = Field(default=104857600)
 
     bootstrap_token: str = Field(

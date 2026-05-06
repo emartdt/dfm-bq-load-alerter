@@ -1,22 +1,66 @@
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from dfm_bq_load_alerter import __version__
 from dfm_bq_load_alerter.api import alerts, checks, health, tables
-from dfm_bq_load_alerter.db.session import dispose_engine
+from dfm_bq_load_alerter.db.session import dispose_engine, session_factory
+from dfm_bq_load_alerter.scheduler import Leader, build_scheduler, register_jobs
 from dfm_bq_load_alerter.settings import settings
 
 logging.basicConfig(level=settings.log_level)
+log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    yield
-    await dispose_engine()
+    leader: Leader | None = None
+    scheduler: AsyncIOScheduler | None = None
+    heartbeat_task: asyncio.Task[None] | None = None
+
+    if settings.scheduler_enabled and settings.postgres_dsn:
+        leader = Leader(session_factory(), ping_seconds=settings.leader_ping_seconds)
+
+        async def on_acquired() -> None:
+            nonlocal scheduler
+            if scheduler is None or not scheduler.running:
+                scheduler = build_scheduler()
+                register_jobs(scheduler)
+                scheduler.start()
+                log.info("scheduler started (leader)")
+
+        async def on_lost() -> None:
+            nonlocal scheduler
+            if scheduler is not None and scheduler.running:
+                scheduler.shutdown(wait=False)
+                log.warning("scheduler shutdown (lost leader)")
+            scheduler = None
+
+        if await leader.try_acquire():
+            await on_acquired()
+
+        heartbeat_task = asyncio.create_task(
+            leader.run_forever(on_acquired=on_acquired, on_lost=on_lost),
+            name="leader-heartbeat",
+        )
+
+    try:
+        yield
+    finally:
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await heartbeat_task
+        if scheduler is not None and scheduler.running:
+            scheduler.shutdown(wait=False)
+        if leader is not None:
+            await leader.release()
+        await dispose_engine()
 
 
 app = FastAPI(title="dfm-bq-load-alerter", version=__version__, lifespan=lifespan)
