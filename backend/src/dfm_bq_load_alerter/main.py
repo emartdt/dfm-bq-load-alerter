@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from dfm_bq_load_alerter import __version__
-from dfm_bq_load_alerter.api import alerts, health
+from dfm_bq_load_alerter.api import alerts, checks, health, tables
 from dfm_bq_load_alerter.db.session import dispose_engine
 from dfm_bq_load_alerter.settings import settings
 
@@ -24,7 +24,9 @@ app = FastAPI(title="dfm-bq-load-alerter", version=__version__, lifespan=lifespa
 # Backend routers MUST be registered before any catch-all so SPA fallback
 # does not intercept /api/*, /auth/*, /healthz, /assets/* requests (C2 guard).
 app.include_router(health.router)
-app.include_router(alerts.router, prefix="/api")
+app.include_router(alerts.router, prefix="/api")  # legacy mock — deprecate in PR-5
+app.include_router(tables.router)
+app.include_router(checks.router)
 
 
 @app.get("/api/version")
