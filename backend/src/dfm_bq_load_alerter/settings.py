@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="")
     smtp_from_addr: str = Field(default="")
     smtp_use_starttls: bool = Field(default=True)
+    smtp_local_hostname: str = Field(
+        default="",
+        description=(
+            "EHLO/HELO hostname. Some sealed-network SMTP relays validate the "
+            "client local hostname; leave empty to use the system default."
+        ),
+    )
 
     teams_default_webhook_secret_ref: str = Field(default="")
 

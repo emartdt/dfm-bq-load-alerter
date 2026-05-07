@@ -47,12 +47,21 @@ spec:
               port: http
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- $envFromSecrets := list }}
           {{- if .Values.teams.defaultWebhookSecretRef }}
+          {{-   $envFromSecrets = append $envFromSecrets .Values.teams.defaultWebhookSecretRef }}
+          {{- end }}
+          {{- if .Values.smtp.secretRef }}
+          {{-   $envFromSecrets = append $envFromSecrets .Values.smtp.secretRef }}
+          {{- end }}
+          {{- if $envFromSecrets }}
           envFrom:
-            # Teams webhook secret keys (e.g. DFM_ALERT_TEAMS_WEBHOOK_DEFAULT)
-            # are exposed as env vars; dispatcher reads them by name.
+            # Each referenced K8s Secret's keys are exposed as DFM_ALERT_* env
+            # vars (Teams webhook URL keys, SMTP host/port/user/local_hostname).
+            {{- range $envFromSecrets }}
             - secretRef:
-                name: {{ .Values.teams.defaultWebhookSecretRef }}
+                name: {{ . }}
+            {{- end }}
           {{- end }}
           env:
             {{- range $k, $v := .Values.env }}

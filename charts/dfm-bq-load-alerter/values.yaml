@@ -92,13 +92,16 @@ oidc:
   jwtLeewaySeconds: "60"
 
 # SMTP relay
+# Recommended: leave host/port/user/fromAddr/useStarttls empty and put all SMTP
+# env vars (DFM_ALERT_SMTP_*) in a single K8s Secret referenced via secretRef.
 smtp:
   host: ""
-  port: "587"
+  port: ""
   user: ""
-  passwordSecretRef: dfm-bq-load-alerter-smtp  # K8s Secret with DFM_ALERT_SMTP_PASSWORD
+  passwordSecretRef: ""  # set when SMTP AUTH is required (DFM_ALERT_SMTP_PASSWORD key)
   fromAddr: ""
-  useStarttls: "true"
+  useStarttls: ""
+  secretRef: ""  # K8s Secret containing DFM_ALERT_SMTP_HOST/PORT/USER/FROM_ADDR/USE_STARTTLS/LOCAL_HOSTNAME
 
 # Teams default webhook (BO 에서 등록 가능, 기본값은 K8s Secret 참조)
 teams:

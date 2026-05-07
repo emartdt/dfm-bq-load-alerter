@@ -4,6 +4,7 @@ Settings used:
 - smtp_host / smtp_port / smtp_use_starttls
 - smtp_user / smtp_password (omitted = no SMTP AUTH)
 - smtp_from_addr (envelope sender + From: header)
+- smtp_local_hostname (EHLO/HELO hostname; empty = aiosmtplib default)
 """
 from __future__ import annotations
 
@@ -34,12 +35,23 @@ async def send_email(*, to: list[str], subject: str, html: str) -> None:
     message.set_content("HTML email — please use a compatible mail client.")
     message.add_alternative(html, subtype="html")
 
-    log.info("smtp send: host=%s to=%d subject=%s", settings.smtp_host, len(to), subject)
-    await aiosmtplib.send(
-        message,
-        hostname=settings.smtp_host,
-        port=settings.smtp_port,
-        start_tls=settings.smtp_use_starttls,
-        username=settings.smtp_user or None,
-        password=settings.smtp_password or None,
+    send_kwargs: dict[str, object] = {
+        "hostname": settings.smtp_host,
+        "port": settings.smtp_port,
+        "start_tls": settings.smtp_use_starttls,
+        "username": settings.smtp_user or None,
+        "password": settings.smtp_password or None,
+    }
+    if settings.smtp_local_hostname:
+        send_kwargs["local_hostname"] = settings.smtp_local_hostname
+
+    log.info(
+        "smtp send: host=%s port=%s to=%d subject=%s starttls=%s local_hostname=%s",
+        settings.smtp_host,
+        settings.smtp_port,
+        len(to),
+        subject,
+        settings.smtp_use_starttls,
+        settings.smtp_local_hostname or "(default)",
     )
+    await aiosmtplib.send(message, **send_kwargs)
