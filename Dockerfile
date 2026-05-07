@@ -34,8 +34,10 @@ WORKDIR /app
 COPY backend/pyproject.toml ./pyproject.toml
 RUN uv pip install --system --no-cache .
 
-# 백엔드 소스
+# 백엔드 소스 + Alembic (런타임 마이그레이션용)
 COPY backend/src ./src
+COPY backend/alembic ./alembic
+COPY backend/alembic.ini ./alembic.ini
 ENV PYTHONPATH=/app/src
 
 # 프론트엔드 빌드 산출물
