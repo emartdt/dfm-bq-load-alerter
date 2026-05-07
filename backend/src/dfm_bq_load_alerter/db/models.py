@@ -98,6 +98,39 @@ class Table(Base):
         nullable=True,
         comment="Operator memo surfaced in alert templates (KR text 권장).",
     )
+    cond_buffer_load: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+        comment=(
+            "When true: deadline-aware not-loaded / row_count_zero conditions "
+            "are evaluated. False → those conditions are suppressed."
+        ),
+    )
+    cond_delta_rowcount: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+        comment="When true: delta_percent_vs_yesterday/last-month threshold check is applied.",
+    )
+    cond_inflow_time_drift: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment=(
+            "When true: today's last_modified clock-time vs yesterday's is "
+            "compared against `inflow_drift_threshold_minutes` "
+            "(falls back to alert_policy.default_inflow_drift_minutes)."
+        ),
+    )
+    inflow_drift_threshold_minutes: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Per-table override for inflow drift threshold (minutes).",
+    )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     group_id: Mapped[int | None] = mapped_column(
         Integer,
@@ -382,6 +415,17 @@ class AlertPolicy(Base):
     retention_days: Mapped[int] = mapped_column(Integer, nullable=False, default=90)
     condition_query_max_bytes: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=104857600
+    )
+    default_inflow_drift_minutes: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=60,
+        server_default="60",
+        comment=(
+            "System-wide default for `cond_inflow_time_drift` threshold. "
+            "Per-table value (`tables.inflow_drift_threshold_minutes`) "
+            "overrides when set."
+        ),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

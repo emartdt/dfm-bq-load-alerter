@@ -28,6 +28,10 @@ class TableIn(BaseModel):
     condition_query: str | None = None
     note: str | None = None
     group_id: int | None = None
+    cond_buffer_load: bool = True
+    cond_delta_rowcount: bool = True
+    cond_inflow_time_drift: bool = False
+    inflow_drift_threshold_minutes: int | None = Field(default=None, ge=1, le=1440)
     active: bool = True
 
 
@@ -42,6 +46,10 @@ class TablePatch(BaseModel):
     condition_query: str | None = None
     note: str | None = None
     group_id: int | None = None
+    cond_buffer_load: bool | None = None
+    cond_delta_rowcount: bool | None = None
+    cond_inflow_time_drift: bool | None = None
+    inflow_drift_threshold_minutes: int | None = Field(default=None, ge=1, le=1440)
     active: bool | None = None
 
 
@@ -59,6 +67,10 @@ class TableOut(BaseModel):
     condition_query: str | None
     note: str | None
     group_id: int | None
+    cond_buffer_load: bool
+    cond_delta_rowcount: bool
+    cond_inflow_time_drift: bool
+    inflow_drift_threshold_minutes: int | None
     active: bool
     created_at: datetime
     updated_at: datetime

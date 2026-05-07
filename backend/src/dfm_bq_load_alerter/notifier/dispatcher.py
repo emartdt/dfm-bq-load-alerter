@@ -34,6 +34,7 @@ from dfm_bq_load_alerter.db.models import (
     CheckSnapshot,
     CheckStatus,
     EventStatus,
+    Frequency,
     Table,
     TeamsWebhook,
     TriggerKind,
@@ -326,24 +327,31 @@ async def dispatch(
     return events_added
 
 
-async def _lookup_yesterday_snapshot(
-    session: AsyncSession, *, table_id: int, today_in_kst: datetime
+async def _lookup_baseline_snapshot(
+    session: AsyncSession,
+    *,
+    table_id: int,
+    frequency: Frequency,
+    today_in_kst: datetime,
 ) -> CheckSnapshot | None:
-    """Most recent yesterday(KST) snapshot for *table_id*.
+    """Most recent baseline snapshot — yesterday for daily, prev month for monthly.
 
-    Mirrors checks/runner._yesterday_row_count but returns the full
-    snapshot so the template can render both `row_count` and
-    `last_modified`. Skips INSUFFICIENT_HISTORY rows so the yesterday
-    reference reflects an actual completed load.
+    Mirrors `checks.runner._baseline_snapshot` but returns the full
+    snapshot so the template can render `row_count` and `last_modified`.
     """
     from datetime import timedelta
     from zoneinfo import ZoneInfo
 
+    from dfm_bq_load_alerter.checks.runner import _previous_month_window
+
     kst = ZoneInfo("Asia/Seoul")
     today = today_in_kst.astimezone(kst).date()
-    yesterday = today - timedelta(days=1)
-    start = datetime.combine(yesterday, datetime.min.time(), tzinfo=kst)
-    end = datetime.combine(today, datetime.min.time(), tzinfo=kst)
+    if frequency == Frequency.monthly:
+        start, end = _previous_month_window(today)
+    else:
+        yesterday = today - timedelta(days=1)
+        start = datetime.combine(yesterday, datetime.min.time(), tzinfo=kst)
+        end = datetime.combine(today, datetime.min.time(), tzinfo=kst)
     stmt = (
         select(CheckSnapshot)
         .where(CheckSnapshot.table_id == table_id)
@@ -374,8 +382,11 @@ async def build_dispatch_snapshots(
         table = table_map.get(s.table_id)
         if table is None:
             continue
-        yday = await _lookup_yesterday_snapshot(
-            session, table_id=table.id, today_in_kst=s.checked_at
+        yday = await _lookup_baseline_snapshot(
+            session,
+            table_id=table.id,
+            frequency=table.frequency,
+            today_in_kst=s.checked_at,
         )
         result.append(
             DispatchSnapshot(

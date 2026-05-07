@@ -282,3 +282,30 @@ nav {
   border-bottom-color: #1565c0;
   font-weight: 600;
 }
+
+.cond-toggles {
+  border: 1px dashed rgba(128, 128, 128, 0.3);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+.cond-toggles legend {
+  font-size: 0.85rem;
+  color: #888;
+  padding: 0 0.4rem;
+}
+.cond-toggles label.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: inherit;
+  flex-direction: row;
+}
+.cond-toggles label.inline input[type='number'] {
+  margin-left: 0.4rem;
+  width: 6rem;
+}

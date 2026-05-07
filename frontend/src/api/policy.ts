@@ -7,6 +7,7 @@ export interface Policy {
   default_threshold_percent: number
   retention_days: number
   condition_query_max_bytes: number
+  default_inflow_drift_minutes: number
   updated_at: string
 }
 
@@ -17,6 +18,7 @@ export interface PolicyPatch {
   default_threshold_percent?: number
   retention_days?: number
   condition_query_max_bytes?: number
+  default_inflow_drift_minutes?: number
 }
 
 export async function getPolicy(): Promise<Policy> {
