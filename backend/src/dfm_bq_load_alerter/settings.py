@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,28 +15,26 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     environment: Literal["development", "staging", "production"] = Field(default="production")
 
-    postgres_dsn: str = Field(
-        default="",
-        description="async SQLAlchemy DSN, e.g. postgresql+asyncpg://user:pass@host:5432/dfm_bq_load_alerter",
-    )
+    postgres_dsn: str = Field(default="")
     postgres_session_timezone: str = Field(default="Asia/Seoul")
 
     bq_project_id: str = Field(default="")
-    bq_dataset_list: str = Field(
-        default="",
-        description="Comma-separated dataset names to monitor (e.g. 'sales,marketing')",
-    )
-    bq_credentials_path: Path = Field(
-        default=Path("/var/secrets/bq-sa/key.json"),
-        description="Service Account JSON path; mapped to GOOGLE_APPLICATION_CREDENTIALS",
-    )
+    bq_dataset_list: str = Field(default="")
+    bq_credentials_path: Path = Field(default=Path("/var/secrets/bq-sa/key.json"))
 
+    # OIDC (Keycloak)
     oidc_issuer: str = Field(default="")
     oidc_client_id: str = Field(default="")
     oidc_client_secret: str = Field(default="")
-    oidc_required_role: str = Field(default="dfm-alerter-admin")
-    oidc_jwks_cache_ttl: int = Field(default=3600)
-    oidc_jwt_leeway_seconds: int = Field(default=60)
+    oidc_redirect_uri: str = Field(
+        default="",
+        description="절대 URL. 빈 값이면 callback 시 request URL로 자동 산출.",
+    )
+    oidc_post_logout_redirect_uri: str = Field(default="")
+
+    # Session cookie
+    session_secret_key: str = Field(default="")
+    session_max_age_seconds: int = Field(default=28800)
 
     smtp_host: str = Field(default="")
     smtp_port: int = Field(default=587)
@@ -44,41 +42,38 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="")
     smtp_from_addr: str = Field(default="")
     smtp_use_starttls: bool = Field(default=True)
-    smtp_local_hostname: str = Field(
-        default="",
-        description=(
-            "EHLO/HELO hostname. Some sealed-network SMTP relays validate the "
-            "client local hostname; leave empty to use the system default."
-        ),
-    )
+    smtp_local_hostname: str = Field(default="")
 
     default_threshold_percent: float = Field(default=25.0)
     retention_days: int = Field(default=90)
     scheduler_timezone: str = Field(default="Asia/Seoul")
-    scheduler_enabled: bool = Field(
-        default=True,
-        description="Disable in tests/local where APScheduler must not start.",
-    )
+    scheduler_enabled: bool = Field(default=True)
     leader_ping_seconds: int = Field(default=30, ge=5, le=300)
     misfire_grace_check_seconds: int = Field(default=120)
     misfire_grace_report_seconds: int = Field(default=600)
     condition_query_max_bytes: int = Field(default=104857600)
 
-    bootstrap_token: str = Field(
-        default="",
-        description=(
-            "PR-5 미머지 시점에만 사용하는 임시 admin 토큰. "
-            "OIDC 설정이 정상 로드되면 무시."
-        ),
-    )
-
     @property
     def bq_datasets(self) -> list[str]:
         return [d.strip() for d in self.bq_dataset_list.split(",") if d.strip()]
 
-    @property
-    def is_oidc_enabled(self) -> bool:
-        return bool(self.oidc_issuer and self.oidc_client_id)
+    @model_validator(mode="after")
+    def _require_oidc_and_session(self) -> "Settings":
+        missing = [
+            name
+            for name, value in [
+                ("DFM_ALERT_OIDC_ISSUER", self.oidc_issuer),
+                ("DFM_ALERT_OIDC_CLIENT_ID", self.oidc_client_id),
+                ("DFM_ALERT_OIDC_CLIENT_SECRET", self.oidc_client_secret),
+                ("DFM_ALERT_SESSION_SECRET_KEY", self.session_secret_key),
+            ]
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"Required environment variables are missing: {', '.join(missing)}"
+            )
+        return self
 
 
 settings = Settings()
