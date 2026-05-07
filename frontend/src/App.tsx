@@ -2,7 +2,9 @@ import { Link, Route, Routes } from 'react-router-dom'
 
 import { TokenInput } from './components/TokenInput'
 import { Groups } from './pages/Groups'
+import { History } from './pages/History'
 import { Home } from './pages/Home'
+import { PolicyPage } from './pages/Policy'
 import { Recipients } from './pages/Recipients'
 import { Tables } from './pages/Tables'
 import { Webhooks } from './pages/Webhooks'
@@ -24,6 +26,10 @@ function App() {
           <Link to="/recipients">Recipients</Link>
           {' · '}
           <Link to="/webhooks">Webhooks</Link>
+          {' · '}
+          <Link to="/history">History</Link>
+          {' · '}
+          <Link to="/policy">Policy</Link>
         </nav>
         <TokenInput />
       </header>
@@ -34,6 +40,8 @@ function App() {
         <Route path="/groups" element={<Groups />} />
         <Route path="/recipients" element={<Recipients />} />
         <Route path="/webhooks" element={<Webhooks />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/policy" element={<PolicyPage />} />
       </Routes>
     </main>
   )
