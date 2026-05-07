@@ -23,6 +23,10 @@ const EMPTY_FORM: TableCreate = {
   delta_threshold_percent: null,
   note: '',
   group_id: null,
+  cond_buffer_load: true,
+  cond_delta_rowcount: true,
+  cond_inflow_time_drift: false,
+  inflow_drift_threshold_minutes: null,
   active: true,
 }
 
@@ -246,6 +250,57 @@ export function Tables() {
               placeholder="월말 결산 BW · ETL 작업자: data-platform"
             />
           </label>
+          <fieldset className="span-2 cond-toggles">
+            <legend>알람 조건 (OR)</legend>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={form.cond_buffer_load ?? true}
+                onChange={(e) =>
+                  setForm({ ...form, cond_buffer_load: e.target.checked })
+                }
+              />
+              버퍼 시간 내 적재 + ROW COUNT=0
+            </label>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={form.cond_delta_rowcount ?? true}
+                onChange={(e) =>
+                  setForm({ ...form, cond_delta_rowcount: e.target.checked })
+                }
+              />
+              전일/전월 row count 비교 (Δ%)
+            </label>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={form.cond_inflow_time_drift ?? false}
+                onChange={(e) =>
+                  setForm({ ...form, cond_inflow_time_drift: e.target.checked })
+                }
+              />
+              유입 시간 비교
+            </label>
+            {form.cond_inflow_time_drift && (
+              <label className="inline">
+                drift 임계치 (분; 빈 값=정책 기본):
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={form.inflow_drift_threshold_minutes ?? ''}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      inflow_drift_threshold_minutes:
+                        e.target.value === '' ? null : Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            )}
+          </fieldset>
         </div>
         <button type="submit" disabled={busy}>
           {busy ? 'Saving…' : 'Add'}

@@ -14,6 +14,10 @@ export interface TableRow {
   condition_query: string | null
   note: string | null
   group_id: number | null
+  cond_buffer_load: boolean
+  cond_delta_rowcount: boolean
+  cond_inflow_time_drift: boolean
+  inflow_drift_threshold_minutes: number | null
   active: boolean
   created_at: string
   updated_at: string
@@ -30,6 +34,10 @@ export interface TableCreate {
   condition_query?: string | null
   note?: string | null
   group_id?: number | null
+  cond_buffer_load?: boolean
+  cond_delta_rowcount?: boolean
+  cond_inflow_time_drift?: boolean
+  inflow_drift_threshold_minutes?: number | null
   active?: boolean
 }
 
@@ -42,6 +50,10 @@ export interface TablePatch {
   condition_query?: string | null
   note?: string | null
   group_id?: number | null
+  cond_buffer_load?: boolean
+  cond_delta_rowcount?: boolean
+  cond_inflow_time_drift?: boolean
+  inflow_drift_threshold_minutes?: number | null
   active?: boolean
 }
 

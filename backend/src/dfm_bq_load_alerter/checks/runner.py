@@ -15,9 +15,11 @@ from dfm_bq_load_alerter.checks.engine import (
     today_kst,
 )
 from dfm_bq_load_alerter.db.models import (
+    AlertPolicy,
     BqQueryLog,
     CheckSnapshot,
     CheckStatus,
+    Frequency,
     Table,
 )
 from dfm_bq_load_alerter.settings import settings
@@ -26,15 +28,42 @@ log = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 
 
-async def _yesterday_row_count(
-    session: AsyncSession, *, table_id: int, today: date
-) -> int | None:
-    """Return the most recent snapshot's row_count from yesterday's calendar day."""
-    yesterday = today - timedelta(days=1)
-    start = datetime.combine(yesterday, datetime.min.time(), tzinfo=KST)
-    end = datetime.combine(today, datetime.min.time(), tzinfo=KST)
+def _previous_month_window(today: date) -> tuple[datetime, datetime]:
+    """[start, end) covering the previous calendar month in KST."""
+    first_of_this = today.replace(day=1)
+    end = datetime.combine(first_of_this, datetime.min.time(), tzinfo=KST)
+    if first_of_this.month == 1:
+        first_of_prev = first_of_this.replace(year=first_of_this.year - 1, month=12)
+    else:
+        first_of_prev = first_of_this.replace(month=first_of_this.month - 1)
+    start = datetime.combine(first_of_prev, datetime.min.time(), tzinfo=KST)
+    return start, end
+
+
+async def _baseline_snapshot(
+    session: AsyncSession,
+    *,
+    table_id: int,
+    frequency: Frequency,
+    today: date,
+) -> CheckSnapshot | None:
+    """Most recent baseline snapshot for delta/inflow comparisons.
+
+    - Daily tables → most recent yesterday(KST) snapshot.
+    - Monthly tables → most recent snapshot from the previous calendar
+      month in KST (typically the previous month's batch_day_of_month run).
+
+    INSUFFICIENT_HISTORY rows are skipped so the baseline reflects an
+    actual completed load.
+    """
+    if frequency == Frequency.monthly:
+        start, end = _previous_month_window(today)
+    else:
+        yesterday = today - timedelta(days=1)
+        start = datetime.combine(yesterday, datetime.min.time(), tzinfo=KST)
+        end = datetime.combine(today, datetime.min.time(), tzinfo=KST)
     stmt = (
-        select(CheckSnapshot.row_count)
+        select(CheckSnapshot)
         .where(CheckSnapshot.table_id == table_id)
         .where(CheckSnapshot.checked_at >= start)
         .where(CheckSnapshot.checked_at < end)
@@ -61,6 +90,11 @@ async def run_checks(
     actual = actual_check_time or datetime.now(tz=KST)
     expected = expected_check_time or actual
     today = today_kst(actual)
+
+    policy = await session.get(AlertPolicy, 1)
+    default_inflow = (
+        policy.default_inflow_drift_minutes if policy is not None else 60
+    )
 
     stmt = select(Table).where(Table.active.is_(True))
     if table_ids:
@@ -95,15 +129,28 @@ async def run_checks(
             if table.delta_threshold_percent is not None
             else settings.default_threshold_percent
         )
-        yesterday_count = await _yesterday_row_count(
-            session, table_id=table.id, today=today
+        baseline = await _baseline_snapshot(
+            session,
+            table_id=table.id,
+            frequency=table.frequency,
+            today=today,
+        )
+        inflow_threshold = (
+            table.inflow_drift_threshold_minutes
+            if table.inflow_drift_threshold_minutes is not None
+            else default_inflow
         )
         result: CheckResult = evaluate(
             metadata,
-            yesterday_row_count=yesterday_count,
+            yesterday_row_count=baseline.row_count if baseline else None,
             delta_threshold_percent=threshold,
             deadline_time=table.deadline_time,
             now=actual,
+            cond_buffer_load=table.cond_buffer_load,
+            cond_delta_rowcount=table.cond_delta_rowcount,
+            cond_inflow_time_drift=table.cond_inflow_time_drift,
+            inflow_drift_threshold_minutes=inflow_threshold,
+            baseline_last_modified=baseline.last_modified if baseline else None,
         )
 
         snapshot = CheckSnapshot(
