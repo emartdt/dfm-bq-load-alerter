@@ -18,7 +18,7 @@ dfm-bq-load-alerter 백엔드(FastAPI) + 프론트엔드(React/Vite) 를 로컬�
 
 ## 2. 1password 항목 등록 (최초 1회)
 
-vault: **Shinsegae** / 항목명: **`[dfm] dev : dfm-bq-load-alerter`**
+vault: **Shinsegae** / 항목명: **`dfm-dev-bq-load-alerter`**
 
 | Field | Type | 값 (예시) |
 |-------|------|-----------|
@@ -75,7 +75,7 @@ curl -s http://localhost:5173/api/version
 # {"version":"0.1.0"}
 
 # 인증 필요한 admin 엔드포인트
-TOKEN=$(op item get "[dfm] dev : dfm-bq-load-alerter" --vault Shinsegae --fields bootstrap_token --reveal)
+TOKEN=$(op item get "dfm-dev-bq-load-alerter" --vault Shinsegae --fields bootstrap_token --reveal)
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/policy | jq
 unset TOKEN
 ```
