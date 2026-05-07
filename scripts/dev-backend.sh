@@ -32,9 +32,6 @@ if [[ ! -f "${ENV_TPL}" ]]; then
   exit 1
 fi
 
-# 빈 static 디렉토리 보장 (FastAPI 가 SPA fallback 을 등록할 때만 mount 시도)
-mkdir -p /tmp/dfm-bq-load-alerter-empty-static
-
 cd "${REPO_ROOT}/backend"
 
 # `op run --env-file` 은 자식 프로세스에 평문 환경변수를 주입한 뒤 자동 정리.
