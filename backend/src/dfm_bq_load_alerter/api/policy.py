@@ -10,11 +10,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from dfm_bq_load_alerter.auth import require_admin
 from dfm_bq_load_alerter.db.models import AlertPolicy
 from dfm_bq_load_alerter.db.session import get_session
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/policy", tags=["policy"])
 
