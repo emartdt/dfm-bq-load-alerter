@@ -1,6 +1,7 @@
 import { Link, Route, Routes } from 'react-router-dom'
 
 import { TokenInput } from './components/TokenInput'
+import { Groups } from './pages/Groups'
 import { Home } from './pages/Home'
 import { Recipients } from './pages/Recipients'
 import { Tables } from './pages/Tables'
@@ -18,6 +19,8 @@ function App() {
           {' · '}
           <Link to="/tables">Tables</Link>
           {' · '}
+          <Link to="/groups">Groups</Link>
+          {' · '}
           <Link to="/recipients">Recipients</Link>
           {' · '}
           <Link to="/webhooks">Webhooks</Link>
@@ -28,6 +31,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/tables" element={<Tables />} />
+        <Route path="/groups" element={<Groups />} />
         <Route path="/recipients" element={<Recipients />} />
         <Route path="/webhooks" element={<Webhooks />} />
       </Routes>

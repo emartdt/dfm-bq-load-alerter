@@ -12,6 +12,7 @@ export interface TableRow {
   batch_day_of_month: number | null
   delta_threshold_percent: number | null
   condition_query: string | null
+  group_id: number | null
   active: boolean
   created_at: string
   updated_at: string
@@ -26,6 +27,18 @@ export interface TableCreate {
   batch_day_of_month?: number | null
   delta_threshold_percent?: number | null
   condition_query?: string | null
+  group_id?: number | null
+  active?: boolean
+}
+
+export interface TablePatch {
+  frequency?: Frequency
+  batch_time?: string
+  deadline_time?: string
+  batch_day_of_month?: number | null
+  delta_threshold_percent?: number | null
+  condition_query?: string | null
+  group_id?: number | null
   active?: boolean
 }
 
@@ -55,6 +68,11 @@ export async function listTables(): Promise<TableRow[]> {
 
 export async function createTable(payload: TableCreate): Promise<TableRow> {
   const { data } = await api.post<TableRow>('/api/tables', payload)
+  return data
+}
+
+export async function updateTable(id: number, payload: TablePatch): Promise<TableRow> {
+  const { data } = await api.patch<TableRow>(`/api/tables/${id}`, payload)
   return data
 }
 
