@@ -47,6 +47,13 @@ spec:
               port: http
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- if .Values.teams.defaultWebhookSecretRef }}
+          envFrom:
+            # Teams webhook secret keys (e.g. DFM_ALERT_TEAMS_WEBHOOK_DEFAULT)
+            # are exposed as env vars; dispatcher reads them by name.
+            - secretRef:
+                name: {{ .Values.teams.defaultWebhookSecretRef }}
+          {{- end }}
           env:
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
