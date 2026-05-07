@@ -27,6 +27,9 @@ dist/
 # Logs
 *.log
 
+# scripts/dev-up.sh runtime state (logs + pidfiles)
+.dev/
+
 # OMC / 에이전트 작업 상태
 .omc/
 .claude/
