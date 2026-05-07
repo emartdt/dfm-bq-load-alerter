@@ -94,6 +94,16 @@ class Table(Base):
     )
     condition_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    group_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("alert_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        comment=(
+            "Optional alert group. NULL → global default channels (all active "
+            "recipients/webhooks). Set → only the group's channels receive "
+            "alerts for this table."
+        ),
+    )
     ack_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -113,6 +123,7 @@ class Table(Base):
     snapshots: Mapped[list[CheckSnapshot]] = relationship(
         back_populates="table", cascade="all,delete-orphan"
     )
+    group: Mapped[AlertGroup | None] = relationship(back_populates="tables")
 
 
 class CheckSnapshot(Base):
@@ -154,6 +165,72 @@ class CheckSnapshot(Base):
     table: Mapped[Table] = relationship(back_populates="snapshots")
 
 
+class AlertGroup(Base):
+    """Logical grouping of tables that share notification channels.
+
+    Tables with `group_id` set route alerts to the channels (email recipients +
+    Teams webhooks) attached to this group. Tables without `group_id` use the
+    global default — all active recipients/webhooks. The dispatcher buckets
+    snapshots per group and sends one bundled message to each bucket's
+    channels (rev 3 P0 — required for "그룹별로 알람 채널 설정 가능").
+    """
+
+    __tablename__ = "alert_groups"
+    __table_args__ = (UniqueConstraint("name", name="uq_alert_groups_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    tables: Mapped[list[Table]] = relationship(back_populates="group")
+    recipients: Mapped[list[AlertRecipient]] = relationship(
+        secondary="alert_group_recipients", back_populates="groups"
+    )
+    webhooks: Mapped[list[TeamsWebhook]] = relationship(
+        secondary="alert_group_webhooks", back_populates="groups"
+    )
+
+
+class AlertGroupRecipient(Base):
+    __tablename__ = "alert_group_recipients"
+
+    group_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("alert_groups.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    recipient_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("alert_recipients.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+
+class AlertGroupWebhook(Base):
+    __tablename__ = "alert_group_webhooks"
+
+    group_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("alert_groups.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    webhook_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("teams_webhooks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+
 class AlertRecipient(Base):
     __tablename__ = "alert_recipients"
     __table_args__ = (UniqueConstraint("email", name="uq_alert_recipients_email"),)
@@ -170,6 +247,10 @@ class AlertRecipient(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    groups: Mapped[list[AlertGroup]] = relationship(
+        secondary="alert_group_recipients", back_populates="recipients"
     )
 
 
@@ -196,6 +277,10 @@ class TeamsWebhook(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    groups: Mapped[list[AlertGroup]] = relationship(
+        secondary="alert_group_webhooks", back_populates="webhooks"
     )
 
 

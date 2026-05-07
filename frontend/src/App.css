@@ -222,3 +222,40 @@ nav {
 .status-ok { background: #2e7d32; color: #fff; }
 .status-fail { background: #c62828; color: #fff; }
 .status-insufficient_history { background: #f57c00; color: #fff; }
+
+.muted-cell {
+  color: #888;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.selected-row {
+  background: rgba(21, 101, 192, 0.08) !important;
+}
+
+.member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+.member-grid h4 { margin: 0 0 0.5rem; font-size: 0.9rem; color: #666; }
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+  padding: 0.5rem;
+  background: rgba(128, 128, 128, 0.04);
+}
+.checklist li { padding: 0.15rem 0; }
+.checklist label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
