@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from dfm_bq_load_alerter import __version__
-from dfm_bq_load_alerter.api import alerts, checks, health, recipients, tables
+from dfm_bq_load_alerter.api import alerts, checks, health, recipients, tables, webhooks
 from dfm_bq_load_alerter.db.session import dispose_engine, session_factory
 from dfm_bq_load_alerter.scheduler import Leader, build_scheduler, register_jobs
 from dfm_bq_load_alerter.settings import settings
@@ -71,6 +71,7 @@ app.include_router(health.router)
 app.include_router(alerts.router, prefix="/api")  # legacy mock — deprecate in PR-5
 app.include_router(tables.router)
 app.include_router(recipients.router)
+app.include_router(webhooks.router)
 app.include_router(checks.router)
 
 

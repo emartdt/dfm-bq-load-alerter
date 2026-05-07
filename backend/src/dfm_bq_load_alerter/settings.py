@@ -52,8 +52,6 @@ class Settings(BaseSettings):
         ),
     )
 
-    teams_default_webhook_secret_ref: str = Field(default="")
-
     default_threshold_percent: float = Field(default=25.0)
     retention_days: int = Field(default=90)
     scheduler_timezone: str = Field(default="Asia/Seoul")

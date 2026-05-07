@@ -179,10 +179,13 @@ class TeamsWebhook(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    secret_ref: Mapped[str] = mapped_column(
-        String(253),
+    webhook_url: Mapped[str] = mapped_column(
+        Text,
         nullable=False,
-        comment="K8s Secret name holding the webhook URL",
+        comment=(
+            "Incoming webhook URL. Treated as a credential — API responses "
+            "MUST mask the value before returning to clients."
+        ),
     )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
