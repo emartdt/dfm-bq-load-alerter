@@ -21,6 +21,7 @@ dependencies = [
     "cachetools>=5.5",
     "cloud-sql-python-connector[asyncpg]>=1.12",
     "aiosmtplib>=3.0",
+    "email-validator>=2.2",
 ]
 
 [project.optional-dependencies]

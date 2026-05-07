@@ -2,6 +2,7 @@ import { Link, Route, Routes } from 'react-router-dom'
 
 import { TokenInput } from './components/TokenInput'
 import { Home } from './pages/Home'
+import { Recipients } from './pages/Recipients'
 import { Tables } from './pages/Tables'
 
 function App() {
@@ -15,6 +16,8 @@ function App() {
           <Link to="/">Home</Link>
           {' · '}
           <Link to="/tables">Tables</Link>
+          {' · '}
+          <Link to="/recipients">Recipients</Link>
         </nav>
         <TokenInput />
       </header>
@@ -22,6 +25,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/tables" element={<Tables />} />
+        <Route path="/recipients" element={<Recipients />} />
       </Routes>
     </main>
   )
