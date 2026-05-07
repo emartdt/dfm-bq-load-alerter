@@ -93,6 +93,11 @@ class Table(Base):
         Numeric(5, 2), nullable=True
     )
     condition_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Operator memo surfaced in alert templates (KR text 권장).",
+    )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     group_id: Mapped[int | None] = mapped_column(
         Integer,

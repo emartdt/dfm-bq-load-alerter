@@ -102,6 +102,7 @@ async def run_checks(
             metadata,
             yesterday_row_count=yesterday_count,
             delta_threshold_percent=threshold,
+            deadline_time=table.deadline_time,
             now=actual,
         )
 

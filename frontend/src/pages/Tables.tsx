@@ -21,6 +21,7 @@ const EMPTY_FORM: TableCreate = {
   deadline_time: '09:00',
   batch_day_of_month: null,
   delta_threshold_percent: null,
+  note: '',
   group_id: null,
   active: true,
 }
@@ -89,6 +90,7 @@ export function Tables() {
           form.batch_day_of_month === null || form.batch_day_of_month === undefined
             ? null
             : Number(form.batch_day_of_month),
+        note: form.note?.trim() ? form.note.trim() : null,
       })
       setForm(EMPTY_FORM)
       await refresh()
@@ -236,6 +238,14 @@ export function Tables() {
               ))}
             </select>
           </label>
+          <label className="span-2">
+            Note (운영 메모; 알림 본문에 노출)
+            <input
+              value={form.note ?? ''}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+              placeholder="월말 결산 BW · ETL 작업자: data-platform"
+            />
+          </label>
         </div>
         <button type="submit" disabled={busy}>
           {busy ? 'Saving…' : 'Add'}
@@ -272,6 +282,7 @@ export function Tables() {
             <th>DOM</th>
             <th>Δ%</th>
             <th>Group</th>
+            <th>Note</th>
             <th>Active</th>
             <th>Actions</th>
           </tr>
@@ -279,7 +290,7 @@ export function Tables() {
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="empty">
+              <td colSpan={11} className="empty">
                 no tables registered
               </td>
             </tr>
@@ -312,6 +323,9 @@ export function Tables() {
                     </option>
                   ))}
                 </select>
+              </td>
+              <td className="muted-cell" title={r.note ?? ''}>
+                {r.note && r.note.length > 24 ? `${r.note.slice(0, 24)}…` : r.note ?? ''}
               </td>
               <td>{r.active ? '✓' : ''}</td>
               <td>

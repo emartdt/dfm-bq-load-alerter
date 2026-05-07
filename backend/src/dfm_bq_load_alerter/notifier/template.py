@@ -18,6 +18,14 @@ KST = ZoneInfo("Asia/Seoul")
 _env = Environment(autoescape=select_autoescape(["html", "xml"]))
 
 
+def _to_kst(dt: datetime) -> str:
+    return dt.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
+
+
+_env.filters["kst"] = _to_kst
+_env.globals["kst"] = _to_kst
+
+
 @dataclass(frozen=True, slots=True)
 class TemplateRow:
     dataset: str
@@ -29,6 +37,9 @@ class TemplateRow:
     delta_percent_vs_yesterday: float | None
     status: str  # 'ok' | 'fail' | 'insufficient_history'
     failure_reasons: list[str]
+    note: str | None = None
+    today_last_modified: datetime | None = None
+    yesterday_last_modified: datetime | None = None
 
 
 _HTML_TEMPLATE = _env.from_string(
@@ -43,18 +54,27 @@ _HTML_TEMPLATE = _env.from_string(
 <table style="border-collapse:collapse;width:100%;font-size:14px;">
 <thead><tr style="background:#fbe9e7;">
   <th style="padding:6px;text-align:left;">Dataset.Table</th>
-  <th style="padding:6px;text-align:right;">Yesterday</th>
-  <th style="padding:6px;text-align:right;">Today</th>
+  <th style="padding:6px;text-align:right;">어제 (rows / 유입)</th>
+  <th style="padding:6px;text-align:right;">오늘 (rows / 유입)</th>
   <th style="padding:6px;text-align:right;">Δ%</th>
-  <th style="padding:6px;text-align:left;">Reasons</th>
+  <th style="padding:6px;text-align:left;">Reasons / Note</th>
 </tr></thead>
 <tbody>
 {% for r in fail_rows %}<tr>
   <td style="padding:6px;border-bottom:1px solid #eee;">{{ r.dataset }}.{{ r.table_name }}</td>
-  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">{{ "{:,}".format(r.yesterday_row_count) if r.yesterday_row_count is not none else "-" }}</td>
-  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">{{ "{:,}".format(r.today_row_count) if r.today_row_count is not none else "-" }}</td>
+  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">
+    {{ "{:,}".format(r.yesterday_row_count) if r.yesterday_row_count is not none else "-" }}
+    {% if r.yesterday_last_modified %}<br><span style="color:#888;font-size:12px;">{{ kst(r.yesterday_last_modified) }}</span>{% endif %}
+  </td>
+  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">
+    {{ "{:,}".format(r.today_row_count) if r.today_row_count is not none else "-" }}
+    {% if r.today_last_modified %}<br><span style="color:#888;font-size:12px;">{{ kst(r.today_last_modified) }}</span>{% endif %}
+  </td>
   <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">{{ "%.2f"|format(r.delta_percent_vs_yesterday) if r.delta_percent_vs_yesterday is not none else "-" }}</td>
-  <td style="padding:6px;border-bottom:1px solid #eee;">{{ r.failure_reasons|join(", ") }}</td>
+  <td style="padding:6px;border-bottom:1px solid #eee;">
+    {{ r.failure_reasons|join(", ") }}
+    {% if r.note %}<br><span style="color:#888;font-size:12px;">📝 {{ r.note }}</span>{% endif %}
+  </td>
 </tr>{% endfor %}
 </tbody></table>
 {% endif %}
@@ -74,8 +94,27 @@ _HTML_TEMPLATE = _env.from_string(
 )
 
 
-def _to_kst(dt: datetime) -> str:
-    return dt.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
+def _fmt_count(n: int | None) -> str:
+    return f"{n:,}" if n is not None else "-"
+
+
+def _fail_fact_value(r: TemplateRow) -> str:
+    """Compose the FAIL fact value for an Adaptive Card."""
+    yday_part = f"yesterday={_fmt_count(r.yesterday_row_count)}"
+    if r.yesterday_last_modified is not None:
+        yday_part += f" @ {_to_kst(r.yesterday_last_modified)}"
+    today_part = f"today={_fmt_count(r.today_row_count)}"
+    if r.today_last_modified is not None:
+        today_part += f" @ {_to_kst(r.today_last_modified)}"
+    delta = (
+        f"Δ%={r.delta_percent_vs_yesterday}"
+        if r.delta_percent_vs_yesterday is not None
+        else "Δ%=-"
+    )
+    pieces = [yday_part, today_part, delta, ", ".join(r.failure_reasons)]
+    if r.note:
+        pieces.append(f"📝 {r.note}")
+    return " · ".join(p for p in pieces if p)
 
 
 def _bucket_rows(rows: list[TemplateRow]) -> tuple[list[TemplateRow], list[TemplateRow], list[TemplateRow]]:
@@ -151,11 +190,7 @@ def build_teams_card(
                 "facts": [
                     {
                         "title": f"{r.dataset}.{r.table_name}",
-                        "value": (
-                            f"yesterday={r.yesterday_row_count} → today={r.today_row_count}"
-                            f" · Δ%={r.delta_percent_vs_yesterday}"
-                            f" · {', '.join(r.failure_reasons)}"
-                        ),
+                        "value": _fail_fact_value(r),
                     }
                     for r in fail
                 ],
