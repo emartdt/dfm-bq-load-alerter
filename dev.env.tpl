@@ -23,8 +23,11 @@ DFM_ALERT_SCHEDULER_ENABLED=false
 DFM_ALERT_ENVIRONMENT=development
 DFM_ALERT_LOG_LEVEL=DEBUG
 
-# 정적 파일은 frontend dev server 가 별도로 서빙 → 백엔드는 mount 안 해도 됨
-DFM_ALERT_STATIC_DIR=/tmp/dfm-bq-load-alerter-empty-static
+# dev 에서는 vite dev server (:5173) 가 React 자산을 모두 서빙한다.
+# 백엔드(:8000)는 순수 API 만 처리하면 되므로 static_dir 을 일부러
+# 존재하지 않는 경로로 두어 main.py 의 `if settings.static_dir.exists()`
+# 분기를 skip 시킨다 (StaticFiles mount + SPA fallback 둘 다 등록 안 됨).
+DFM_ALERT_STATIC_DIR=/nonexistent/dfm-bq-load-alerter-dev
 
 # BigQuery 연동은 로컬에서 보통 비활성. 필요 시 아래 두 줄 주석 해제 +
 # 1password 에 sa_key.json 파일 항목 추가 후 op read 로 임시 파일 주입.
