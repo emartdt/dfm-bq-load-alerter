@@ -14,13 +14,13 @@ def _reload_settings():
 
 def test_oidc_fields_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DFM_ALERT_OIDC_ISSUER", raising=False)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 — Settings raises ValidationError wrapping our ValueError
         _reload_settings()
 
 
 def test_session_secret_key_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DFM_ALERT_SESSION_SECRET_KEY", raising=False)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 — Settings raises ValidationError wrapping our ValueError
         _reload_settings()
 
 

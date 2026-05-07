@@ -1,7 +1,7 @@
 """bo_users 테이블 upsert 헬퍼."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ async def upsert_login(
     keycloak_subject: str,
     email: str | None,
 ) -> BOUser:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await session.execute(
         select(BOUser).where(BOUser.keycloak_subject == keycloak_subject)
     )
