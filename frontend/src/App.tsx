@@ -4,6 +4,7 @@ import { TokenInput } from './components/TokenInput'
 import { Home } from './pages/Home'
 import { Recipients } from './pages/Recipients'
 import { Tables } from './pages/Tables'
+import { Webhooks } from './pages/Webhooks'
 
 function App() {
   return (
@@ -18,6 +19,8 @@ function App() {
           <Link to="/tables">Tables</Link>
           {' · '}
           <Link to="/recipients">Recipients</Link>
+          {' · '}
+          <Link to="/webhooks">Webhooks</Link>
         </nav>
         <TokenInput />
       </header>
@@ -26,6 +29,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/tables" element={<Tables />} />
         <Route path="/recipients" element={<Recipients />} />
+        <Route path="/webhooks" element={<Webhooks />} />
       </Routes>
     </main>
   )

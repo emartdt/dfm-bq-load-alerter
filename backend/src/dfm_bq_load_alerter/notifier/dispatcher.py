@@ -40,7 +40,6 @@ from dfm_bq_load_alerter.notifier.template import (
     build_email_html,
     build_teams_card,
 )
-from dfm_bq_load_alerter.settings import settings
 
 log = logging.getLogger(__name__)
 
@@ -96,17 +95,8 @@ async def _get_active_webhooks(session: AsyncSession) -> list[TeamsWebhook]:
     return list(rows)
 
 
-async def _resolve_webhook_url(secret_ref: str) -> str:
-    """Read webhook URL from K8s Secret reference. v0.2.x minimal implementation
-    falls back to env DFM_ALERT_TEAMS_WEBHOOK_<secret_ref> for local dev/testing.
-
-    Production wiring: K8s ServiceAccount has Role to read Secret in same ns
-    (rev 2 P6). Implemented in PR-5 alongside webhook auto-create on POST.
-    """
-    import os
-
-    env_key = f"DFM_ALERT_TEAMS_WEBHOOK_{secret_ref.upper().replace('-', '_')}"
-    return os.environ.get(env_key, "")
+async def _resolve_webhook_url(hook: TeamsWebhook) -> str:
+    return hook.webhook_url or ""
 
 
 async def _persist_event(
@@ -205,18 +195,9 @@ async def dispatch(
 
     # Teams
     webhooks = await _get_active_webhooks(session)
-    if not webhooks and settings.teams_default_webhook_secret_ref:
-        webhooks = [
-            TeamsWebhook(
-                id=0,
-                name="default",
-                secret_ref=settings.teams_default_webhook_secret_ref,
-                active=True,
-            )
-        ]
 
     for hook in webhooks:
-        url = await _resolve_webhook_url(hook.secret_ref)
+        url = await _resolve_webhook_url(hook)
         if not url:
             await _persist_event(
                 session,
@@ -225,7 +206,7 @@ async def dispatch(
                 channel=Channel.teams,
                 status=EventStatus.skipped,
                 payload_summary=f"{summary} · webhook={hook.name}",
-                error=f"secret {hook.secret_ref} not resolvable",
+                error="webhook_url is empty",
             )
             events_added += 1
             continue
