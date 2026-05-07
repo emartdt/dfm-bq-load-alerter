@@ -44,6 +44,8 @@ export interface RunNowResponse {
   triggered_at: string
   snapshot_count: number
   snapshots: RunNowSnapshot[]
+  notified: boolean
+  sent_events: number
 }
 
 export async function listTables(): Promise<TableRow[]> {
@@ -60,8 +62,10 @@ export async function deleteTable(id: number): Promise<void> {
   await api.delete(`/api/tables/${id}`)
 }
 
-export async function runNow(tableId?: number): Promise<RunNowResponse> {
-  const params = tableId !== undefined ? { table_id: tableId } : {}
+export async function runNow(tableId?: number, notify = false): Promise<RunNowResponse> {
+  const params: Record<string, string | number | boolean> = {}
+  if (tableId !== undefined) params.table_id = tableId
+  if (notify) params.notify = true
   const { data } = await api.post<RunNowResponse>('/api/checks/run-now', null, { params })
   return data
 }

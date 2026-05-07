@@ -35,6 +35,7 @@ export function Tables() {
   const [form, setForm] = useState<TableCreate>(EMPTY_FORM)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
+  const [notify, setNotify] = useState<boolean>(false)
   const [lastRun, setLastRun] = useState<RunNowResponse | null>(null)
 
   const refresh = useCallback(async () => {
@@ -95,7 +96,7 @@ export function Tables() {
     setError('')
     setLastRun(null)
     try {
-      setLastRun(await runNow(tableId))
+      setLastRun(await runNow(tableId, notify))
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -204,6 +205,19 @@ export function Tables() {
         <button type="button" onClick={() => void onRunNow()} disabled={busy}>
           Run now (all)
         </button>
+        <label className="notify-toggle">
+          <input
+            type="checkbox"
+            checked={notify}
+            onChange={(e) => setNotify(e.target.checked)}
+          />
+          Send alerts (이메일 + Teams)
+        </label>
+        {lastRun && (
+          <span className="run-meta">
+            sent_events={lastRun.sent_events} (notified={String(lastRun.notified)})
+          </span>
+        )}
       </div>
 
       <table className="grid-table">
