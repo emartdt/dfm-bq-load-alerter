@@ -57,7 +57,9 @@ class DispatchSnapshot:
     """Lightweight projection of a CheckSnapshot enriched with table context.
 
     Decoupled from the ORM so tests can pass plain values without a DB.
-    `group_id` drives per-group channel routing (PR-B).
+    `group_id` drives per-group channel routing (PR-B). `note` /
+    `today_last_modified` / `yesterday_last_modified` are PR-C
+    enrichments shown in the alert body.
     """
 
     snapshot_id: int | None
@@ -71,6 +73,9 @@ class DispatchSnapshot:
     status: CheckStatus
     failure_reasons: list[str]
     group_id: int | None = None
+    note: str | None = None
+    today_last_modified: datetime | None = None
+    yesterday_last_modified: datetime | None = None
 
 
 def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
@@ -84,6 +89,9 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
         delta_percent_vs_yesterday=s.delta_percent_vs_yesterday,
         status=s.status.value,
         failure_reasons=s.failure_reasons,
+        note=s.note,
+        today_last_modified=s.today_last_modified,
+        yesterday_last_modified=s.yesterday_last_modified,
     )
 
 
@@ -318,10 +326,40 @@ async def dispatch(
     return events_added
 
 
+async def _lookup_yesterday_snapshot(
+    session: AsyncSession, *, table_id: int, today_in_kst: datetime
+) -> CheckSnapshot | None:
+    """Most recent yesterday(KST) snapshot for *table_id*.
+
+    Mirrors checks/runner._yesterday_row_count but returns the full
+    snapshot so the template can render both `row_count` and
+    `last_modified`. Skips INSUFFICIENT_HISTORY rows so the yesterday
+    reference reflects an actual completed load.
+    """
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    kst = ZoneInfo("Asia/Seoul")
+    today = today_in_kst.astimezone(kst).date()
+    yesterday = today - timedelta(days=1)
+    start = datetime.combine(yesterday, datetime.min.time(), tzinfo=kst)
+    end = datetime.combine(today, datetime.min.time(), tzinfo=kst)
+    stmt = (
+        select(CheckSnapshot)
+        .where(CheckSnapshot.table_id == table_id)
+        .where(CheckSnapshot.checked_at >= start)
+        .where(CheckSnapshot.checked_at < end)
+        .where(CheckSnapshot.status != CheckStatus.insufficient_history)
+        .order_by(CheckSnapshot.checked_at.desc())
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def build_dispatch_snapshots(
     session: AsyncSession, snapshots: list[CheckSnapshot]
 ) -> list[DispatchSnapshot]:
-    """Enrich ORM snapshots with table info and yesterday row_count."""
+    """Enrich ORM snapshots with table info, yesterday row/time, and note."""
     if not snapshots:
         return []
 
@@ -336,9 +374,9 @@ async def build_dispatch_snapshots(
         table = table_map.get(s.table_id)
         if table is None:
             continue
-        # yesterday lookup is intentionally light here (use snapshot's own
-        # delta_percent which already reflects yesterday). Keeping the
-        # template field nullable lets us avoid an extra round-trip.
+        yday = await _lookup_yesterday_snapshot(
+            session, table_id=table.id, today_in_kst=s.checked_at
+        )
         result.append(
             DispatchSnapshot(
                 snapshot_id=s.id,
@@ -346,7 +384,7 @@ async def build_dispatch_snapshots(
                 table_name=table.table_name,
                 expected_check_time=s.expected_check_time,
                 actual_check_time=s.checked_at,
-                yesterday_row_count=None,
+                yesterday_row_count=yday.row_count if yday else None,
                 today_row_count=s.row_count,
                 delta_percent_vs_yesterday=(
                     float(s.delta_percent_vs_yesterday)
@@ -356,6 +394,9 @@ async def build_dispatch_snapshots(
                 status=s.status,
                 failure_reasons=list(s.failure_reasons or []),
                 group_id=table.group_id,
+                note=table.note,
+                today_last_modified=s.last_modified,
+                yesterday_last_modified=yday.last_modified if yday else None,
             )
         )
     return result

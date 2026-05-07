@@ -108,6 +108,9 @@ nav {
   gap: 0.75rem 1rem;
   margin-bottom: 0.75rem;
 }
+.table-form .grid .span-2 {
+  grid-column: span 2;
+}
 .table-form label {
   display: flex;
   flex-direction: column;

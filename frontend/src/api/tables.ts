@@ -12,6 +12,7 @@ export interface TableRow {
   batch_day_of_month: number | null
   delta_threshold_percent: number | null
   condition_query: string | null
+  note: string | null
   group_id: number | null
   active: boolean
   created_at: string
@@ -27,6 +28,7 @@ export interface TableCreate {
   batch_day_of_month?: number | null
   delta_threshold_percent?: number | null
   condition_query?: string | null
+  note?: string | null
   group_id?: number | null
   active?: boolean
 }
@@ -38,6 +40,7 @@ export interface TablePatch {
   batch_day_of_month?: number | null
   delta_threshold_percent?: number | null
   condition_query?: string | null
+  note?: string | null
   group_id?: number | null
   active?: boolean
 }

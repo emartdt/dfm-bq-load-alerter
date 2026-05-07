@@ -26,6 +26,7 @@ class TableIn(BaseModel):
     batch_day_of_month: int | None = Field(default=None, ge=1, le=31)
     delta_threshold_percent: float | None = Field(default=None, gt=0, le=100)
     condition_query: str | None = None
+    note: str | None = None
     group_id: int | None = None
     active: bool = True
 
@@ -39,6 +40,7 @@ class TablePatch(BaseModel):
     batch_day_of_month: int | None = Field(default=None, ge=1, le=31)
     delta_threshold_percent: float | None = Field(default=None, gt=0, le=100)
     condition_query: str | None = None
+    note: str | None = None
     group_id: int | None = None
     active: bool | None = None
 
@@ -55,6 +57,7 @@ class TableOut(BaseModel):
     batch_day_of_month: int | None
     delta_threshold_percent: float | None
     condition_query: str | None
+    note: str | None
     group_id: int | None
     active: bool
     created_at: datetime
