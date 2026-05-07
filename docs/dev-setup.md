@@ -38,27 +38,28 @@ npm install
 
 ## 4. 실행
 
-두 개의 터미널이 필요하다.
-
-### 터미널 A — 백엔드 (uvicorn --reload)
+`scripts/dev-up.sh` 한 번으로 백엔드(uvicorn --reload)와 프론트엔드(Vite)를 동시에 백그라운드로 띄운다. 정지는 `scripts/dev-down.sh`.
 
 ```bash
-./scripts/dev-backend.sh
-# 기본 포트 8000. 변경 시 PORT=9000 ./scripts/dev-backend.sh
+./scripts/dev-up.sh
+# Backend  → http://localhost:8000/healthz   (logs: .dev/backend.log)
+# Frontend → http://localhost:5173/           (logs: .dev/frontend.log)
+# PID 는 .dev/{backend,frontend}.pid 에 저장 (gitignore)
+
+# 백엔드 포트 변경
+BACKEND_PORT=9000 ./scripts/dev-up.sh
+
+# 로그 따라가기
+tail -f .dev/backend.log
+tail -f .dev/frontend.log
+
+# 정지 (자식 프로세스 op run / uvicorn / vite 까지 함께 종료)
+./scripts/dev-down.sh
 ```
 
-`op run` 이 `dev.env.tpl` 을 읽어 환경변수를 자식 프로세스(uvicorn)에만 주입.
-프로세스 종료 시 평문은 메모리에서 사라진다.
+`op run` 이 `dev.env.tpl` 을 읽어 환경변수를 backend 자식 프로세스에만 주입한다. 평문은 프로세스가 살아 있는 동안만 메모리에 존재.
 
-### 터미널 B — 프론트엔드 (Vite dev server)
-
-```bash
-./scripts/dev-frontend.sh
-# http://localhost:5173 — /api/* 와 /healthz 는 vite proxy 로 백엔드에 전달
-```
-
-브라우저에서 `localhost:5173` 접속 → 우측 상단 token 입력란에 1password 의
-`bootstrap_token` 값을 붙여 넣으면 admin API 호출 가능.
+브라우저에서 `localhost:5173` 접속 → 우측 상단 token 입력란에 1password 의 `bootstrap_token` 값을 붙여 넣으면 admin API 호출 가능. `/api/*` 와 `/healthz` 는 vite proxy 가 백엔드(:8000) 로 전달.
 
 ## 5. 검증 체크리스트
 
