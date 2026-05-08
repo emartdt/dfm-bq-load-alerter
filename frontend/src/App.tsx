@@ -1,49 +1,44 @@
-import { Link, Route, Routes } from 'react-router-dom'
+import { Outlet, Route, Routes } from 'react-router-dom'
 
-import { TokenInput } from './components/TokenInput'
+import { AuthProvider } from './auth/AuthContext'
+import { ProtectedRoute } from './auth/ProtectedRoute'
+import { Header } from './components/Header'
 import { Groups } from './pages/Groups'
 import { History } from './pages/History'
 import { Home } from './pages/Home'
+import { Login } from './pages/Login'
 import { PolicyPage } from './pages/Policy'
 import { Recipients } from './pages/Recipients'
 import { Tables } from './pages/Tables'
 import { Webhooks } from './pages/Webhooks'
 
-function App() {
+function Layout() {
   return (
     <main>
-      <header>
-        <h1>
-          <Link to="/">DFM BigQuery Load Alerter</Link>
-        </h1>
-        <nav>
-          <Link to="/">Home</Link>
-          {' · '}
-          <Link to="/tables">Tables</Link>
-          {' · '}
-          <Link to="/groups">Groups</Link>
-          {' · '}
-          <Link to="/recipients">Recipients</Link>
-          {' · '}
-          <Link to="/webhooks">Webhooks</Link>
-          {' · '}
-          <Link to="/history">History</Link>
-          {' · '}
-          <Link to="/policy">Policy</Link>
-        </nav>
-        <TokenInput />
-      </header>
-
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/tables" element={<Tables />} />
-        <Route path="/groups" element={<Groups />} />
-        <Route path="/recipients" element={<Recipients />} />
-        <Route path="/webhooks" element={<Webhooks />} />
-        <Route path="/history" element={<History />} />
-        <Route path="/policy" element={<PolicyPage />} />
-      </Routes>
+      <Header />
+      <Outlet />
     </main>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/tables" element={<Tables />} />
+            <Route path="/groups" element={<Groups />} />
+            <Route path="/recipients" element={<Recipients />} />
+            <Route path="/webhooks" element={<Webhooks />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/policy" element={<PolicyPage />} />
+          </Route>
+        </Route>
+      </Routes>
+    </AuthProvider>
   )
 }
 
