@@ -57,6 +57,32 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            {{- /*
+            settings.py 의 model_validator 가 OIDC + session 필수 변수를
+            모듈 import 시점에 검증한다. alembic 은 이 변수를 사용하지
+            않지만, 미주입 시 ValidationError 로 Job 자체가 실패한다.
+            따라서 deployment 와 동일하게 주입한다.
+            */}}
+            {{- if .Values.oidc.issuer }}
+            - name: DFM_ALERT_OIDC_ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            - name: DFM_ALERT_OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            {{- if .Values.oidc.clientSecretRef }}
+            - name: DFM_ALERT_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.oidc.clientSecretRef }}
+                  key: DFM_ALERT_OIDC_CLIENT_SECRET
+            {{- end }}
+            {{- end }}
+            {{- if .Values.session.secretRef }}
+            - name: DFM_ALERT_SESSION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.session.secretRef }}
+                  key: DFM_ALERT_SESSION_SECRET_KEY
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
