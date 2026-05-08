@@ -1,6 +1,7 @@
 """인증 라우터."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -11,6 +12,8 @@ from dfm_bq_load_alerter.auth import oidc
 from dfm_bq_load_alerter.auth.session import get_current_user
 from dfm_bq_load_alerter.db.bo_users import upsert_login
 from dfm_bq_load_alerter.db.session import get_session
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -44,7 +47,11 @@ async def callback(
     email = userinfo.get("email")
     name = userinfo.get("name") or userinfo.get("preferred_username")
 
-    await upsert_login(session, keycloak_subject=sub, email=email)
+    # bo_users 기록은 best-effort. 추적 실패가 로그인 자체를 막아선 안 됨.
+    try:
+        await upsert_login(session, keycloak_subject=sub, email=email)
+    except Exception:  # noqa: BLE001
+        log.exception("upsert_login failed for sub=%s; continuing login", sub)
 
     # 세션에는 user 와 id_token(로그아웃 hint) 만 보관.
     # access_token / refresh_token 은 보관하지 않는다 — Keycloak 보호 자원

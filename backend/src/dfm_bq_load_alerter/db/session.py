@@ -23,6 +23,12 @@ def _build_engine() -> AsyncEngine:
     connect_args: dict[str, object] = {
         "server_settings": {"timezone": settings.postgres_session_timezone},
     }
+    # 로컬 개발은 cloud-sql-auth-proxy(plain TCP) 경유. asyncpg 의 기본
+    # ssl="prefer" 는 업그레이드 핸드셰이크를 시도하다 간헐적으로 끊어진다.
+    # prod 는 Cloud SQL Connector / Private IP 가 SSL 을 알아서 처리하므로
+    # development 에서만 명시적으로 SSL 을 끈다.
+    if settings.environment == "development":
+        connect_args["ssl"] = False
     return create_async_engine(
         settings.postgres_dsn,
         echo=False,
