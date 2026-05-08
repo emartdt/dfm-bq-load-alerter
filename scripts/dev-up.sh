@@ -9,8 +9,9 @@
 #
 # 사전 조건:
 #   - 1password CLI(op) signin 완료
-#   - 1password vault `Shinsegae` 의 dfm-dev-bq-load-alerter (postgres_dsn,
-#     bootstrap_token) 등록 — docs/dev-setup.md 참조
+#   - 1password vault `Shinsegae`:
+#       dfm-dev-bq-load-alerter (postgres_dsn)
+#       [dfm] keycloak: dfm-bq-load-alerter (client_id, client_secret, session_secret_key)
 #   - uv / npm 설치
 #   - frontend/node_modules 미존재 시 자동 npm install
 
@@ -46,6 +47,11 @@ if [[ ! -d "${REPO_ROOT}/frontend/node_modules" ]]; then
 fi
 
 echo "→ backend uvicorn :${BACKEND_PORT} (logs: .dev/backend.log)"
+KEYCLOAK_ITEM='[dfm] keycloak: dfm-bq-load-alerter'
+DFM_ALERT_OIDC_CLIENT_ID="$(op item get "$KEYCLOAK_ITEM" --vault Shinsegae --field client_id --reveal)"
+DFM_ALERT_OIDC_CLIENT_SECRET="$(op item get "$KEYCLOAK_ITEM" --vault Shinsegae --field client_secret --reveal)"
+DFM_ALERT_SESSION_SECRET_KEY="$(op item get "$KEYCLOAK_ITEM" --vault Shinsegae --field session_secret_key --reveal)"
+export DFM_ALERT_OIDC_CLIENT_ID DFM_ALERT_OIDC_CLIENT_SECRET DFM_ALERT_SESSION_SECRET_KEY
 (
   cd "${REPO_ROOT}/backend"
   exec op run --env-file="${ENV_TPL}" -- \

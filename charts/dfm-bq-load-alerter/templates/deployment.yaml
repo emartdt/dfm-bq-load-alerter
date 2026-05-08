@@ -94,12 +94,10 @@ spec:
               value: {{ .Values.oidc.issuer | quote }}
             - name: DFM_ALERT_OIDC_CLIENT_ID
               value: {{ .Values.oidc.clientId | quote }}
-            - name: DFM_ALERT_OIDC_REQUIRED_ROLE
-              value: {{ .Values.oidc.requiredRole | quote }}
-            - name: DFM_ALERT_OIDC_JWKS_CACHE_TTL
-              value: {{ .Values.oidc.jwksCacheTtl | quote }}
-            - name: DFM_ALERT_OIDC_JWT_LEEWAY_SECONDS
-              value: {{ .Values.oidc.jwtLeewaySeconds | quote }}
+            - name: DFM_ALERT_OIDC_REDIRECT_URI
+              value: {{ .Values.oidc.redirectUri | quote }}
+            - name: DFM_ALERT_OIDC_POST_LOGOUT_REDIRECT_URI
+              value: {{ .Values.oidc.postLogoutRedirectUri | quote }}
             {{- if .Values.oidc.clientSecretRef }}
             - name: DFM_ALERT_OIDC_CLIENT_SECRET
               valueFrom:
@@ -107,6 +105,15 @@ spec:
                   name: {{ .Values.oidc.clientSecretRef }}
                   key: DFM_ALERT_OIDC_CLIENT_SECRET
             {{- end }}
+            {{- end }}
+            {{- if .Values.session.secretRef }}
+            - name: DFM_ALERT_SESSION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.session.secretRef }}
+                  key: DFM_ALERT_SESSION_SECRET_KEY
+            - name: DFM_ALERT_SESSION_MAX_AGE_SECONDS
+              value: {{ .Values.session.maxAgeSeconds | quote }}
             {{- end }}
             {{- if .Values.smtp.host }}
             - name: DFM_ALERT_SMTP_HOST
@@ -130,13 +137,6 @@ spec:
             {{- if .Values.teams.defaultWebhookSecretRef }}
             - name: DFM_ALERT_TEAMS_DEFAULT_WEBHOOK_SECRET_REF
               value: {{ .Values.teams.defaultWebhookSecretRef | quote }}
-            {{- end }}
-            {{- if .Values.bootstrapToken.enabled }}
-            - name: DFM_ALERT_BOOTSTRAP_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.bootstrapToken.secretRef }}
-                  key: DFM_ALERT_BOOTSTRAP_TOKEN
             {{- end }}
           {{- if .Values.bigquery.serviceAccount.secretRef }}
           volumeMounts:

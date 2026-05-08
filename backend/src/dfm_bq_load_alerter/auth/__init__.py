@@ -1,3 +1,7 @@
-from dfm_bq_load_alerter.auth.bootstrap import require_admin
+from dfm_bq_load_alerter.auth.session import (
+    get_current_user,
+    require_admin,
+    require_user,
+)
 
-__all__ = ["require_admin"]
+__all__ = ["get_current_user", "require_admin", "require_user"]

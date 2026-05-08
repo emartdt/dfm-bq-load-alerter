@@ -84,12 +84,16 @@ bigquery:
 
 # Keycloak OIDC
 oidc:
-  issuer: ""
-  clientId: ""
-  clientSecretRef: dfm-bq-load-alerter-oidc  # K8s Secret with DFM_ALERT_OIDC_CLIENT_SECRET
-  requiredRole: dfm-alerter-admin
-  jwksCacheTtl: "3600"
-  jwtLeewaySeconds: "60"
+  issuer: "https://iam.shinsegae.ai/auth/realms/SHINSEGAE.AI"
+  clientId: "dfm-bq-load-alerter"
+  clientSecretRef: dfm-bq-load-alerter-oidc  # K8s Secret with key DFM_ALERT_OIDC_CLIENT_SECRET
+  redirectUri: "https://dfm-alert.shinsegae.ai/auth/callback"
+  postLogoutRedirectUri: "https://dfm-alert.shinsegae.ai/"
+
+# Session cookie 암호화 키 (32바이트 hex)
+session:
+  secretRef: dfm-bq-load-alerter-session  # K8s Secret with key DFM_ALERT_SESSION_SECRET_KEY
+  maxAgeSeconds: "28800"
 
 # SMTP relay
 # Recommended: leave host/port/user/fromAddr/useStarttls empty and put all SMTP
@@ -106,11 +110,6 @@ smtp:
 # Teams default webhook (BO 에서 등록 가능, 기본값은 K8s Secret 참조)
 teams:
   defaultWebhookSecretRef: ""
-
-# Bootstrap token (PR-5 미머지 시 한정 — OIDC 정상 로드 시 무시됨)
-bootstrapToken:
-  enabled: false
-  secretRef: dfm-bq-load-alerter-bootstrap  # Secret with DFM_ALERT_BOOTSTRAP_TOKEN
 
 serviceAccount:
   create: true

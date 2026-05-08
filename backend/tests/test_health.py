@@ -51,7 +51,7 @@ def test_spa_fallback_does_not_intercept_api_paths(tmp_path, monkeypatch) -> Non
         assert response.status_code == 404
 
         # Unknown /auth path → backend 404 (not SPA fallback)
-        response = client.get("/auth/callback")
+        response = client.get("/auth/does-not-exist")
         assert response.status_code == 404
 
         # Non-prefix path → SPA index.html

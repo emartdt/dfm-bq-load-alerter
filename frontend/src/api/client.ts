@@ -1,16 +1,17 @@
-import axios, { type InternalAxiosRequestConfig } from 'axios'
-
-import { getBootstrapToken } from '../auth/token'
+import axios, { type AxiosError } from 'axios'
 
 export const api = axios.create({
   baseURL: '/',
   timeout: 30000,
+  withCredentials: true,
 })
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = getBootstrapToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+api.interceptors.response.use(
+  (resp) => resp,
+  (error: AxiosError) => {
+    if (error.response?.status === 401 && window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  },
+)

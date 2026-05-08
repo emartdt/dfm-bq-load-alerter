@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from dfm_bq_load_alerter import __version__
 from dfm_bq_load_alerter.api import (
@@ -19,6 +20,7 @@ from dfm_bq_load_alerter.api import (
     tables,
     webhooks,
 )
+from dfm_bq_load_alerter.auth.routes import router as auth_router
 from dfm_bq_load_alerter.db.session import dispose_engine, session_factory
 from dfm_bq_load_alerter.scheduler import Leader, build_scheduler, register_jobs
 from dfm_bq_load_alerter.settings import settings
@@ -75,9 +77,19 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="dfm-bq-load-alerter", version=__version__, lifespan=lifespan)
 
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret_key,
+    session_cookie="dfm_session",
+    https_only=settings.environment == "production",
+    same_site="lax",
+    max_age=settings.session_max_age_seconds,
+)
+
 # Backend routers MUST be registered before any catch-all so SPA fallback
 # does not intercept /api/*, /auth/*, /healthz, /assets/* requests (C2 guard).
 app.include_router(health.router)
+app.include_router(auth_router)
 app.include_router(alerts.router, prefix="/api")  # legacy mock — deprecate in PR-5
 app.include_router(tables.router)
 app.include_router(recipients.router)
