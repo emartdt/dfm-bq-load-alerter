@@ -13,7 +13,7 @@
 
 DFM_ALERT_POSTGRES_DSN=op://Shinsegae/dfm-dev-bq-load-alerter/postgres_dsn
 
-DFM_ALERT_OIDC_ISSUER=https://iam.shinsegae.ai/realms/SHINSEGAE.AI
+DFM_ALERT_OIDC_ISSUER=https://iam.shinsegae.ai/auth/realms/SHINSEGAE.AI
 DFM_ALERT_OIDC_REDIRECT_URI=http://localhost:5173/auth/callback
 DFM_ALERT_OIDC_POST_LOGOUT_REDIRECT_URI=http://localhost:5173/
 

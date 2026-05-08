@@ -84,7 +84,7 @@ bigquery:
 
 # Keycloak OIDC
 oidc:
-  issuer: "https://iam.shinsegae.ai/realms/SHINSEGAE.AI"
+  issuer: "https://iam.shinsegae.ai/auth/realms/SHINSEGAE.AI"
   clientId: "dfm-bq-load-alerter"
   clientSecretRef: dfm-bq-load-alerter-oidc  # K8s Secret with key DFM_ALERT_OIDC_CLIENT_SECRET
   redirectUri: "https://dfm-alert.shinsegae.ai/auth/callback"
