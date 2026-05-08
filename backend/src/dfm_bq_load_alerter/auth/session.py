@@ -1,25 +1,15 @@
-"""세션 쿠키 기반 인증 dependency."""
+"""세션 쿠키 기반 인증 dependency.
+
+세션에는 user dict 만 보관(+ logout 용 id_token). access/refresh 토큰은
+저장하지 않는다 — Keycloak 보호 자원 API 를 호출하지 않으므로 access_token
+이 필요 없고, 세션 만료는 SessionMiddleware 의 cookie max-age 로 관리한다.
+모든 토큰을 담으면 4KB 쿠키 한계를 넘겨 브라우저가 silent drop 한다.
+"""
 from __future__ import annotations
 
-import time
 from typing import Any
 
-from fastapi import HTTPException, Request, Response, status
-
-from dfm_bq_load_alerter.auth import oidc
-
-REFRESH_THRESHOLD_SECONDS = 300
-
-
-def _clear_session(request: Request) -> None:
-    request.session.clear()
-
-
-def _get_tokens(request: Request) -> dict[str, Any] | None:
-    tokens = request.session.get("tokens")
-    if not isinstance(tokens, dict):
-        return None
-    return tokens
+from fastapi import HTTPException, Request, status
 
 
 def _get_user(request: Request) -> dict[str, Any] | None:
@@ -29,42 +19,17 @@ def _get_user(request: Request) -> dict[str, Any] | None:
     return user
 
 
-async def get_current_user(request: Request, response: Response) -> dict[str, Any]:
+async def get_current_user(request: Request) -> dict[str, Any]:
     user = _get_user(request)
-    tokens = _get_tokens(request)
-
-    if user is None or tokens is None:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-
-    expires_at = int(tokens.get("expires_at", 0))
-    if expires_at - int(time.time()) < REFRESH_THRESHOLD_SECONDS:
-        refresh_token = tokens.get("refresh_token")
-        if not refresh_token:
-            _clear_session(request)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session expired",
-            )
-        new_token = await oidc.refresh_access_token(refresh_token)
-        if new_token is None:
-            _clear_session(request)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session refresh failed",
-            )
-        tokens["access_token"] = new_token["access_token"]
-        if "refresh_token" in new_token:
-            tokens["refresh_token"] = new_token["refresh_token"]
-        if "id_token" in new_token:
-            tokens["id_token"] = new_token["id_token"]
-        tokens["expires_at"] = oidc.expires_at_from_token(new_token)
-        request.session["tokens"] = tokens
-
     return user
 
 
+# TODO(rbac): 역할 기반 인가가 필요해지면 require_admin 만 role=='admin' 검사로
+# 분기. 현재 스펙은 "로그인=admin" 이므로 셋 다 동일.
 require_user = get_current_user
 require_admin = get_current_user

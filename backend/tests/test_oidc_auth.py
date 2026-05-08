@@ -132,31 +132,6 @@ def test_me_returns_user_when_authenticated(client: TestClient) -> None:
     assert data["email"] == "u@ex.com"
 
 
-def test_silent_refresh_when_token_near_expiry(client: TestClient) -> None:
-    _login_session_cookie(client, expires_in=60)
-    refreshed = {
-        "access_token": "AT-new",
-        "refresh_token": "RT-new",
-        "expires_in": 3600,
-    }
-    with patch(
-        "dfm_bq_load_alerter.auth.oidc.refresh_access_token",
-        new=AsyncMock(return_value=refreshed),
-    ):
-        resp = client.get("/auth/me")
-    assert resp.status_code == 200
-
-
-def test_failed_refresh_returns_401(client: TestClient) -> None:
-    _login_session_cookie(client, expires_in=60)
-    with patch(
-        "dfm_bq_load_alerter.auth.oidc.refresh_access_token",
-        new=AsyncMock(return_value=None),
-    ):
-        resp = client.get("/auth/me")
-    assert resp.status_code == 401
-
-
 def test_logout_clears_session_and_redirects_to_keycloak(client: TestClient) -> None:
     _login_session_cookie(client)
     fake_logout_url = "https://iam.example.test/realms/TEST/protocol/openid-connect/logout?id_token_hint=ID"

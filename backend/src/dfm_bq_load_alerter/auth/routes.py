@@ -46,21 +46,19 @@ async def callback(
 
     await upsert_login(session, keycloak_subject=sub, email=email)
 
+    # 세션에는 user 와 id_token(로그아웃 hint) 만 보관.
+    # access_token / refresh_token 은 보관하지 않는다 — Keycloak 보호 자원
+    # API 를 호출하지 않고, 세션 만료는 쿠키 max-age 로 관리하기 때문.
+    # JWT 3개를 모두 담으면 4KB 쿠키 한계를 넘겨 브라우저가 silent drop.
     request.session["user"] = {"sub": sub, "email": email, "name": name}
-    request.session["tokens"] = {
-        "access_token": token["access_token"],
-        "refresh_token": token.get("refresh_token"),
-        "id_token": token.get("id_token"),
-        "expires_at": oidc.expires_at_from_token(token),
-    }
+    request.session["id_token"] = token.get("id_token")
 
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/logout", name="auth_logout")
 async def logout(request: Request) -> RedirectResponse:
-    tokens = request.session.get("tokens") or {}
-    id_token = tokens.get("id_token")
+    id_token = request.session.get("id_token")
     request.session.clear()
     logout_url = await oidc.build_logout_url(id_token, request)
     return RedirectResponse(url=logout_url, status_code=status.HTTP_302_FOUND)
