@@ -176,15 +176,6 @@ class Table(Base):
         default=True,
         comment="모니터링 활성화 여부. false 이면 스케줄러 체크 대상에서 제외.",
     )
-    group_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("alert_groups.id", ondelete="SET NULL"),
-        nullable=True,
-        comment=(
-            "소속 알림 그룹. NULL → 전역 기본 채널(활성 수신자/Webhook 전체) 로 송신, "
-            "값이 있으면 해당 그룹의 채널로만 송신."
-        ),
-    )
     ack_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -213,7 +204,6 @@ class Table(Base):
     snapshots: Mapped[list[CheckSnapshot]] = relationship(
         back_populates="table", cascade="all,delete-orphan"
     )
-    group: Mapped[AlertGroup | None] = relationship(back_populates="tables")
 
 
 class CheckSnapshot(Base):
@@ -288,97 +278,6 @@ class CheckSnapshot(Base):
     table: Mapped[Table] = relationship(back_populates="snapshots")
 
 
-class AlertGroup(Base):
-    """Logical grouping of tables that share notification channels.
-
-    Tables with `group_id` set route alerts to the channels (email recipients +
-    Teams webhooks) attached to this group. Tables without `group_id` use the
-    global default — all active recipients/webhooks. The dispatcher buckets
-    snapshots per group and sends one bundled message to each bucket's
-    channels (rev 3 P0 — required for "그룹별로 알람 채널 설정 가능").
-    """
-
-    __tablename__ = "alert_groups"
-    __table_args__ = (UniqueConstraint("name", name="uq_alert_groups_name"),)
-
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        comment="알림 그룹 PK (자동 증가).",
-    )
-    name: Mapped[str] = mapped_column(
-        String(128),
-        nullable=False,
-        comment="알림 그룹 식별 이름 (전역 유일).",
-    )
-    description: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="알림 그룹 설명/용도 메모.",
-    )
-    active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        comment="알림 그룹 사용 여부. false 이면 송신 대상에서 제외.",
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        comment="레코드 생성 시각 (UTC).",
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-        comment="레코드 마지막 수정 시각 (UTC).",
-    )
-
-    tables: Mapped[list[Table]] = relationship(back_populates="group")
-    recipients: Mapped[list[AlertRecipient]] = relationship(
-        secondary="alert_group_recipients", back_populates="groups"
-    )
-    webhooks: Mapped[list[TeamsWebhook]] = relationship(
-        secondary="alert_group_webhooks", back_populates="groups"
-    )
-
-
-class AlertGroupRecipient(Base):
-    __tablename__ = "alert_group_recipients"
-
-    group_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("alert_groups.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="알림 그룹 FK (alert_groups.id). 그룹 삭제 시 매핑 삭제.",
-    )
-    recipient_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("alert_recipients.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="이메일 수신자 FK (alert_recipients.id). 수신자 삭제 시 매핑 삭제.",
-    )
-
-
-class AlertGroupWebhook(Base):
-    __tablename__ = "alert_group_webhooks"
-
-    group_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("alert_groups.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="알림 그룹 FK (alert_groups.id). 그룹 삭제 시 매핑 삭제.",
-    )
-    webhook_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("teams_webhooks.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="Teams Webhook FK (teams_webhooks.id). Webhook 삭제 시 매핑 삭제.",
-    )
-
-
 class AlertRecipient(Base):
     __tablename__ = "alert_recipients"
     __table_args__ = (UniqueConstraint("email", name="uq_alert_recipients_email"),)
@@ -416,10 +315,6 @@ class AlertRecipient(Base):
         server_default=func.now(),
         onupdate=func.now(),
         comment="레코드 마지막 수정 시각 (UTC).",
-    )
-
-    groups: Mapped[list[AlertGroup]] = relationship(
-        secondary="alert_group_recipients", back_populates="recipients"
     )
 
 
@@ -463,10 +358,6 @@ class TeamsWebhook(Base):
         server_default=func.now(),
         onupdate=func.now(),
         comment="레코드 마지막 수정 시각 (UTC).",
-    )
-
-    groups: Mapped[list[AlertGroup]] = relationship(
-        secondary="alert_group_webhooks", back_populates="webhooks"
     )
 
 

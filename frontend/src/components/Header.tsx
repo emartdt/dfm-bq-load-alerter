@@ -14,8 +14,6 @@ export function Header() {
         {' · '}
         <Link to="/tables">Tables</Link>
         {' · '}
-        <Link to="/groups">Groups</Link>
-        {' · '}
         <Link to="/recipients">Recipients</Link>
         {' · '}
         <Link to="/webhooks">Webhooks</Link>

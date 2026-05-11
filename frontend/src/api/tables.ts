@@ -13,7 +13,6 @@ export interface TableRow {
   delta_threshold_percent: number | null
   condition_query: string | null
   note: string | null
-  group_id: number | null
   cond_buffer_load: boolean
   cond_delta_rowcount: boolean
   cond_inflow_time_drift: boolean
@@ -33,7 +32,6 @@ export interface TableCreate {
   delta_threshold_percent?: number | null
   condition_query?: string | null
   note?: string | null
-  group_id?: number | null
   cond_buffer_load?: boolean
   cond_delta_rowcount?: boolean
   cond_inflow_time_drift?: boolean
@@ -49,7 +47,6 @@ export interface TablePatch {
   delta_threshold_percent?: number | null
   condition_query?: string | null
   note?: string | null
-  group_id?: number | null
   cond_buffer_load?: boolean
   cond_delta_rowcount?: boolean
   cond_inflow_time_drift?: boolean

@@ -27,7 +27,6 @@ class TableIn(BaseModel):
     delta_threshold_percent: float | None = Field(default=None, gt=0, le=100)
     condition_query: str | None = None
     note: str | None = None
-    group_id: int | None = None
     cond_buffer_load: bool = True
     cond_delta_rowcount: bool = True
     cond_inflow_time_drift: bool = False
@@ -45,7 +44,6 @@ class TablePatch(BaseModel):
     delta_threshold_percent: float | None = Field(default=None, gt=0, le=100)
     condition_query: str | None = None
     note: str | None = None
-    group_id: int | None = None
     cond_buffer_load: bool | None = None
     cond_delta_rowcount: bool | None = None
     cond_inflow_time_drift: bool | None = None
@@ -66,7 +64,6 @@ class TableOut(BaseModel):
     delta_threshold_percent: float | None
     condition_query: str | None
     note: str | None
-    group_id: int | None
     cond_buffer_load: bool
     cond_delta_rowcount: bool
     cond_inflow_time_drift: bool

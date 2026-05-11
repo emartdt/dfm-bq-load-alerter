@@ -58,9 +58,6 @@ def test_models_register_against_metadata() -> None:
         "alert_policy",
         "system_warnings",
         "bq_query_log",
-        "alert_groups",
-        "alert_group_recipients",
-        "alert_group_webhooks",
     }
     actual = set(Base.metadata.tables.keys())
     missing = expected - actual

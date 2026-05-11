@@ -3,7 +3,6 @@ import { Outlet, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { Header } from './components/Header'
-import { Groups } from './pages/Groups'
 import { History } from './pages/History'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
@@ -30,7 +29,6 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/tables" element={<Tables />} />
-            <Route path="/groups" element={<Groups />} />
             <Route path="/recipients" element={<Recipients />} />
             <Route path="/webhooks" element={<Webhooks />} />
             <Route path="/history" element={<History />} />

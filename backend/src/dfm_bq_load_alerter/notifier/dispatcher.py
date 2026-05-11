@@ -4,11 +4,8 @@ rev 2 M3: a single trigger's snapshots become **one message per channel**
 (not one per table). FAIL >= 1 (trigger=check) or any (trigger=report)
 results in a send. Result rows are persisted in `alert_events`.
 
-rev 3 (PR-B): snapshots are bucketed by `table.group_id` first. Each
-bucket sends to its group's channels (or the global default channels
-when `group_id IS NULL`). This implements 요구사항의 "그룹별로 알람
-채널 설정 가능" — a table assigned to a group only notifies that
-group's recipients/webhooks.
+rev 4 (그룹 제거): 모든 알람은 글로벌 단일 풀(active=true 인 수신자/Webhook
+전체) 로만 송신된다. 테이블별 알람 조건은 `tables.cond_*` 로 유지된다.
 
 This module is used both by the run-now API (PR-2 extension) and the
 scheduler (PR-4). It is policy-aware (alert_policy.dedup_strategy) but
@@ -27,8 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dfm_bq_load_alerter.db.models import (
     AlertEvent,
-    AlertGroupRecipient,
-    AlertGroupWebhook,
     AlertRecipient,
     Channel,
     CheckSnapshot,
@@ -58,8 +53,7 @@ class DispatchSnapshot:
     """Lightweight projection of a CheckSnapshot enriched with table context.
 
     Decoupled from the ORM so tests can pass plain values without a DB.
-    `group_id` drives per-group channel routing (PR-B). `note` /
-    `today_last_modified` / `yesterday_last_modified` are PR-C
+    `note` / `today_last_modified` / `yesterday_last_modified` are PR-C
     enrichments shown in the alert body.
     """
 
@@ -73,7 +67,6 @@ class DispatchSnapshot:
     delta_percent_vs_yesterday: float | None
     status: CheckStatus
     failure_reasons: list[str]
-    group_id: int | None = None
     note: str | None = None
     today_last_modified: datetime | None = None
     yesterday_last_modified: datetime | None = None
@@ -96,42 +89,21 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
     )
 
 
-async def _get_recipients_for_group(
-    session: AsyncSession, group_id: int | None
-) -> list[str]:
-    """group_id IS NULL → 글로벌 active 수신자 전부 / 아니면 그룹 멤버만."""
-    if group_id is None:
-        stmt = select(AlertRecipient.email).where(AlertRecipient.active.is_(True))
-    else:
-        stmt = (
-            select(AlertRecipient.email)
-            .join(
-                AlertGroupRecipient,
-                AlertGroupRecipient.recipient_id == AlertRecipient.id,
-            )
-            .where(AlertGroupRecipient.group_id == group_id)
-            .where(AlertRecipient.active.is_(True))
+async def _get_active_recipients(session: AsyncSession) -> list[str]:
+    rows = (
+        await session.execute(
+            select(AlertRecipient.email).where(AlertRecipient.active.is_(True))
         )
-    rows = (await session.execute(stmt)).scalars().all()
+    ).scalars().all()
     return list(rows)
 
 
-async def _get_webhooks_for_group(
-    session: AsyncSession, group_id: int | None
-) -> list[TeamsWebhook]:
-    if group_id is None:
-        stmt = select(TeamsWebhook).where(TeamsWebhook.active.is_(True))
-    else:
-        stmt = (
-            select(TeamsWebhook)
-            .join(
-                AlertGroupWebhook,
-                AlertGroupWebhook.webhook_id == TeamsWebhook.id,
-            )
-            .where(AlertGroupWebhook.group_id == group_id)
-            .where(TeamsWebhook.active.is_(True))
+async def _get_active_webhooks(session: AsyncSession) -> list[TeamsWebhook]:
+    rows = (
+        await session.execute(
+            select(TeamsWebhook).where(TeamsWebhook.active.is_(True))
         )
-    rows = (await session.execute(stmt)).scalars().all()
+    ).scalars().all()
     return list(rows)
 
 
@@ -161,22 +133,27 @@ async def _persist_event(
     )
 
 
-async def _dispatch_bucket(
+async def dispatch(
     session: AsyncSession,
     *,
-    bucket_snapshots: list[DispatchSnapshot],
-    group_id: int | None,
+    snapshots: list[DispatchSnapshot],
     trigger_kind: Literal["check", "report"],
     expected: datetime,
     actual: datetime,
 ) -> int:
-    """그룹 한 개 버킷에 대해 채널별 묶음 송신 및 AlertEvent 적재.
+    """Send one bundled message to the global recipient/webhook pool.
 
-    호출 시점에 trigger_kind=='check' AND fail_count==0 여부는 호출자가
-    이미 필터링한다. 본 함수는 무조건 송신을 수행한다.
+    Returns the total number of `alert_events` rows added (sent + failed + skipped).
     """
-    fail_count = sum(1 for s in bucket_snapshots if s.status == CheckStatus.fail)
-    rows = [_to_template_row(s) for s in bucket_snapshots]
+    if not snapshots and trigger_kind == "report":
+        log.info("dispatch skipped: empty snapshot list for trigger=report")
+        return 0
+    fail_count = sum(1 for s in snapshots if s.status == CheckStatus.fail)
+    if trigger_kind == "check" and fail_count == 0:
+        log.info("dispatch skipped: no FAIL rows for trigger=check")
+        return 0
+
+    rows = [_to_template_row(s) for s in snapshots]
     subject, html = build_email_html(
         trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
     )
@@ -184,17 +161,13 @@ async def _dispatch_bucket(
         trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
     )
 
-    bucket_label = f"group={group_id}" if group_id is not None else "group=global"
-    summary = (
-        f"{trigger_kind} · {bucket_label} · "
-        f"fail={fail_count}/{len(bucket_snapshots)}"
-    )
+    summary = f"{trigger_kind} · fail={fail_count}/{len(snapshots)}"
     tk_enum = TriggerKind.check if trigger_kind == "check" else TriggerKind.report
-    snapshot_id = bucket_snapshots[0].snapshot_id if bucket_snapshots else None
+    snapshot_id = snapshots[0].snapshot_id if snapshots else None
     events_added = 0
 
     # Email
-    recipients = await _get_recipients_for_group(session, group_id)
+    recipients = await _get_active_recipients(session)
     if recipients:
         try:
             await send_email(to=recipients, subject=subject, html=html)
@@ -218,7 +191,7 @@ async def _dispatch_bucket(
                 error=str(exc),
             )
         except Exception as exc:  # noqa: BLE001 — record and continue
-            log.exception("email send failed (%s)", bucket_label)
+            log.exception("email send failed")
             await _persist_event(
                 session,
                 snapshot_id=snapshot_id,
@@ -230,10 +203,10 @@ async def _dispatch_bucket(
             )
         events_added += 1
     else:
-        log.info("no recipients for %s; email skipped", bucket_label)
+        log.info("no active recipients; email skipped")
 
     # Teams
-    webhooks = await _get_webhooks_for_group(session, group_id)
+    webhooks = await _get_active_webhooks(session)
     for hook in webhooks:
         url = await _resolve_webhook_url(hook)
         if not url:
@@ -259,7 +232,7 @@ async def _dispatch_bucket(
                 payload_summary=f"{summary} · webhook={hook.name}",
             )
         except TeamsPostError as exc:
-            log.warning("teams webhook failed (%s): %s", bucket_label, exc)
+            log.warning("teams webhook failed: %s", exc)
             await _persist_event(
                 session,
                 snapshot_id=snapshot_id,
@@ -270,58 +243,6 @@ async def _dispatch_bucket(
                 error=str(exc),
             )
         events_added += 1
-
-    return events_added
-
-
-async def dispatch(
-    session: AsyncSession,
-    *,
-    snapshots: list[DispatchSnapshot],
-    trigger_kind: Literal["check", "report"],
-    expected: datetime,
-    actual: datetime,
-) -> int:
-    """Bucket snapshots by group_id and dispatch each bucket separately.
-
-    Returns the total number of `alert_events` rows added across all
-    buckets (sent + failed + skipped).
-    """
-    if not snapshots and trigger_kind == "report":
-        log.info("dispatch skipped: empty snapshot list for trigger=report")
-        return 0
-    if trigger_kind == "check":
-        total_fail = sum(1 for s in snapshots if s.status == CheckStatus.fail)
-        if total_fail == 0:
-            log.info("dispatch skipped: no FAIL rows for trigger=check")
-            return 0
-
-    # Stable bucket order: None (global) first, then ascending group_id.
-    buckets: dict[int | None, list[DispatchSnapshot]] = {}
-    for s in snapshots:
-        buckets.setdefault(s.group_id, []).append(s)
-    ordered_keys = sorted(
-        buckets.keys(), key=lambda k: (0, 0) if k is None else (1, k)
-    )
-
-    events_added = 0
-    for group_id in ordered_keys:
-        bucket = buckets[group_id]
-        if trigger_kind == "check" and not any(
-            s.status == CheckStatus.fail for s in bucket
-        ):
-            log.info(
-                "dispatch: skip bucket group=%s (no FAIL in bucket)", group_id
-            )
-            continue
-        events_added += await _dispatch_bucket(
-            session,
-            bucket_snapshots=bucket,
-            group_id=group_id,
-            trigger_kind=trigger_kind,
-            expected=expected,
-            actual=actual,
-        )
 
     await session.flush()
     return events_added
@@ -404,7 +325,6 @@ async def build_dispatch_snapshots(
                 ),
                 status=s.status,
                 failure_reasons=list(s.failure_reasons or []),
-                group_id=table.group_id,
                 note=table.note,
                 today_last_modified=s.last_modified,
                 yesterday_last_modified=yday.last_modified if yday else None,

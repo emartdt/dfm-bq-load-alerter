@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 
-import { listGroups, type Group } from '../api/groups'
 import {
   createTable,
   deleteTable,
   listTables,
   runNow,
-  updateTable,
   type RunNowResponse,
   type TableCreate,
   type TableRow,
@@ -22,7 +20,6 @@ const EMPTY_FORM: TableCreate = {
   batch_day_of_month: null,
   delta_threshold_percent: null,
   note: '',
-  group_id: null,
   cond_buffer_load: true,
   cond_delta_rowcount: true,
   cond_inflow_time_drift: false,
@@ -40,7 +37,6 @@ function describeError(err: unknown): string {
 
 export function Tables() {
   const [rows, setRows] = useState<TableRow[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
   const [form, setForm] = useState<TableCreate>(EMPTY_FORM)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
@@ -50,29 +46,11 @@ export function Tables() {
   const refresh = useCallback(async () => {
     setError('')
     try {
-      const [t, g] = await Promise.all([listTables(), listGroups()])
-      setRows(t)
-      setGroups(g)
+      setRows(await listTables())
     } catch (err) {
       setError(describeError(err))
     }
   }, [])
-
-  const onChangeGroup = async (id: number, group_id: number | null) => {
-    setBusy(true)
-    setError('')
-    try {
-      await updateTable(id, { group_id })
-      await refresh()
-    } catch (err) {
-      setError(describeError(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const groupName = (id: number | null | undefined): string =>
-    id ? groups.find((g) => g.id === id)?.name ?? `#${id}` : '(global)'
 
   useEffect(() => {
     void refresh()
@@ -223,25 +201,6 @@ export function Tables() {
               placeholder="default 25"
             />
           </label>
-          <label>
-            Alert group
-            <select
-              value={form.group_id ?? ''}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  group_id: e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
-            >
-              <option value="">(global default)</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="span-2">
             Note (운영 메모; 알림 본문에 노출)
             <input
@@ -336,7 +295,6 @@ export function Tables() {
             <th>Deadline</th>
             <th>DOM</th>
             <th>Δ%</th>
-            <th>Group</th>
             <th>Note</th>
             <th>Active</th>
             <th>Actions</th>
@@ -345,7 +303,7 @@ export function Tables() {
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={11} className="empty">
+              <td colSpan={10} className="empty">
                 no tables registered
               </td>
             </tr>
@@ -359,26 +317,6 @@ export function Tables() {
               <td>{r.deadline_time}</td>
               <td>{r.batch_day_of_month ?? ''}</td>
               <td>{r.delta_threshold_percent ?? '(default)'}</td>
-              <td>
-                <select
-                  value={r.group_id ?? ''}
-                  disabled={busy}
-                  onChange={(e) =>
-                    void onChangeGroup(
-                      r.id,
-                      e.target.value === '' ? null : Number(e.target.value),
-                    )
-                  }
-                  title={groupName(r.group_id)}
-                >
-                  <option value="">(global)</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </td>
               <td className="muted-cell" title={r.note ?? ''}>
                 {r.note && r.note.length > 24 ? `${r.note.slice(0, 24)}…` : r.note ?? ''}
               </td>
