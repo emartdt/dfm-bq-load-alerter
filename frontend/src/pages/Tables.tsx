@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 
 import {
@@ -34,6 +34,10 @@ const STATUS_LABEL: Record<string, string> = {
   insufficient_history: '이력 부족',
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+type FrequencyFilter = 'all' | 'daily' | 'monthly'
+type ActiveFilter = 'all' | 'active' | 'inactive'
+
 function describeError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
@@ -68,6 +72,47 @@ export function Tables() {
   const [notify, setNotify] = useState<boolean>(false)
   const [lastRun, setLastRun] = useState<RunNowResponse | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
+
+  const [datasetQuery, setDatasetQuery] = useState<string>('')
+  const [tableQuery, setTableQuery] = useState<string>('')
+  const [frequencyFilter, setFrequencyFilter] = useState<FrequencyFilter>('all')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all')
+  const [page, setPage] = useState<number>(1)
+  const [pageSize, setPageSize] = useState<number>(20)
+
+  const filteredRows = useMemo(() => {
+    const ds = datasetQuery.trim().toLowerCase()
+    const tn = tableQuery.trim().toLowerCase()
+    return rows.filter((r) => {
+      if (ds && !r.dataset.toLowerCase().includes(ds)) return false
+      if (tn && !r.table_name.toLowerCase().includes(tn)) return false
+      if (frequencyFilter !== 'all' && r.frequency !== frequencyFilter) return false
+      if (activeFilter === 'active' && !r.active) return false
+      if (activeFilter === 'inactive' && r.active) return false
+      return true
+    })
+  }, [rows, datasetQuery, tableQuery, frequencyFilter, activeFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pageStart = (currentPage - 1) * pageSize
+  const pagedRows = filteredRows.slice(pageStart, pageStart + pageSize)
+
+  useEffect(() => {
+    setPage(1)
+  }, [datasetQuery, tableQuery, frequencyFilter, activeFilter, pageSize])
+
+  const resetFilters = () => {
+    setDatasetQuery('')
+    setTableQuery('')
+    setFrequencyFilter('all')
+    setActiveFilter('all')
+  }
+  const hasActiveFilter =
+    datasetQuery.trim() !== '' ||
+    tableQuery.trim() !== '' ||
+    frequencyFilter !== 'all' ||
+    activeFilter !== 'all'
 
   const refresh = useCallback(async () => {
     setError('')
@@ -387,6 +432,55 @@ export function Tables() {
         )}
       </div>
 
+      <div className="filter-bar">
+        <label className="filter-field">
+          <span>데이터셋</span>
+          <input
+            value={datasetQuery}
+            onChange={(e) => setDatasetQuery(e.target.value)}
+            placeholder="dataset 검색"
+          />
+        </label>
+        <label className="filter-field">
+          <span>테이블</span>
+          <input
+            value={tableQuery}
+            onChange={(e) => setTableQuery(e.target.value)}
+            placeholder="table_name 검색"
+          />
+        </label>
+        <label className="filter-field">
+          <span>주기</span>
+          <select
+            value={frequencyFilter}
+            onChange={(e) => setFrequencyFilter(e.target.value as FrequencyFilter)}
+          >
+            <option value="all">전체</option>
+            <option value="daily">일간</option>
+            <option value="monthly">월간</option>
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>활성</span>
+          <select
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+          >
+            <option value="all">전체</option>
+            <option value="active">활성</option>
+            <option value="inactive">비활성</option>
+          </select>
+        </label>
+        <span className="filter-meta">
+          {filteredRows.length.toLocaleString()} / {rows.length.toLocaleString()} 건
+        </span>
+        {hasActiveFilter && (
+          <button type="button" className="btn btn-secondary btn-small" onClick={resetFilters}>
+            필터 초기화
+          </button>
+        )}
+      </div>
+
       <div className="table-scroll">
       <table className="grid-table">
         <thead>
@@ -406,14 +500,16 @@ export function Tables() {
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
+          {pagedRows.length === 0 && (
             <tr>
               <td colSpan={12} className="empty">
-                등록된 테이블이 없습니다.
+                {rows.length === 0
+                  ? '등록된 테이블이 없습니다.'
+                  : '필터 조건과 일치하는 테이블이 없습니다.'}
               </td>
             </tr>
           )}
-          {rows.map((r) => (
+          {pagedRows.map((r) => (
             <tr key={r.id} className={editingId === r.id ? 'selected-row' : undefined}>
               <td className="muted-cell" title={r.project_id ?? ''}>
                 {r.project_id ?? '(기본)'}
@@ -463,6 +559,61 @@ export function Tables() {
           ))}
         </tbody>
       </table>
+      </div>
+
+      <div className="pagination">
+        <label className="filter-field">
+          <span>페이지 크기</span>
+          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="filter-meta">
+          {filteredRows.length === 0
+            ? '0 건'
+            : `${pageStart + 1}–${Math.min(pageStart + pageSize, filteredRows.length)} / ${filteredRows.length.toLocaleString()} 건`}
+        </span>
+        <div className="btn-row">
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => setPage(1)}
+            disabled={currentPage <= 1}
+          >
+            처음
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+          >
+            이전
+          </button>
+          <span className="page-indicator">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+          >
+            다음
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => setPage(totalPages)}
+            disabled={currentPage >= totalPages}
+          >
+            마지막
+          </button>
+        </div>
       </div>
 
       {lastRun && (
