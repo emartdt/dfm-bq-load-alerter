@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +71,40 @@ class TableOut(BaseModel):
     updated_at: datetime
 
 
+class BulkTableEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    day: int | None = Field(default=None, ge=1, le=31)
+    time: time
+    type: Frequency
+
+    @field_validator("time", mode="before")
+    @classmethod
+    def _zero_pad_hour(cls, value: object) -> object:
+        if isinstance(value, str) and len(value) >= 1 and value[1:2] == ":":
+            return "0" + value
+        return value
+
+
+class BulkTablesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset: str = Field(min_length=1, max_length=128)
+    project_id: str | None = Field(default=None, min_length=1, max_length=64)
+    buffer_minutes: int | None = Field(default=None, ge=1, le=1440)
+    tables: dict[str, BulkTableEntry] = Field(min_length=1)
+
+
+class BulkSkipped(BaseModel):
+    table_name: str
+    reason: str
+
+
+class BulkTablesResult(BaseModel):
+    created: list[TableOut]
+    skipped: list[BulkSkipped]
+
+
 @router.get("", response_model=list[TableOut])
 async def list_tables(
     session: AsyncSession = Depends(get_session),
@@ -80,6 +114,78 @@ async def list_tables(
         await session.execute(select(Table).order_by(Table.dataset, Table.table_name))
     ).scalars().all()
     return list(rows)
+
+
+@router.post(
+    "/bulk",
+    response_model=BulkTablesResult,
+    status_code=status.HTTP_201_CREATED,
+)
+async def bulk_create_tables(
+    payload: BulkTablesIn,
+    session: AsyncSession = Depends(get_session),
+    _principal: dict = Depends(require_admin),
+) -> BulkTablesResult:
+    """`{table_name: {day, time, type}}` 포맷으로 다건 등록.
+
+    - `type=daily` → `batch_day_of_month`는 무시됨 (NULL 저장).
+    - `type=monthly` → `day` 필수.
+    - 이미 존재하는 (dataset, table_name) 은 skipped 로 반환되며 다른 행은 계속 등록.
+    """
+    names = list(payload.tables.keys())
+    existing_rows = await session.execute(
+        select(Table.table_name).where(
+            Table.dataset == payload.dataset,
+            Table.table_name.in_(names),
+        )
+    )
+    existing: set[str] = set(existing_rows.scalars().all())
+
+    skipped: list[BulkSkipped] = []
+    to_insert: list[Table] = []
+    for name, entry in payload.tables.items():
+        if name in existing:
+            skipped.append(BulkSkipped(table_name=name, reason="already exists"))
+            continue
+        if entry.type == Frequency.monthly and entry.day is None:
+            skipped.append(
+                BulkSkipped(
+                    table_name=name,
+                    reason="batch_day_of_month required for monthly",
+                )
+            )
+            continue
+        to_insert.append(
+            Table(
+                project_id=payload.project_id,
+                dataset=payload.dataset,
+                table_name=name,
+                frequency=entry.type,
+                batch_time=entry.time,
+                buffer_minutes=payload.buffer_minutes,
+                batch_day_of_month=(
+                    entry.day if entry.type == Frequency.monthly else None
+                ),
+            )
+        )
+
+    if to_insert:
+        session.add_all(to_insert)
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"bulk insert failed: {exc.orig}",
+            ) from exc
+        for table in to_insert:
+            await session.refresh(table)
+
+    return BulkTablesResult(
+        created=[TableOut.model_validate(t) for t in to_insert],
+        skipped=skipped,
+    )
 
 
 @router.post("", response_model=TableOut, status_code=status.HTTP_201_CREATED)
