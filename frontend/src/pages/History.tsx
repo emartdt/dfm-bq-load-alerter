@@ -14,6 +14,18 @@ import {
 
 const PAGE_SIZE = 50
 
+const SNAPSHOT_STATUS_HELP: Array<{ label: string; desc: string }> = [
+  { label: 'ok', desc: '활성화된 모든 체크 통과 (정상 적재).' },
+  {
+    label: 'fail',
+    desc: '실패 사유 발견 — window 내 미적재 / row_count=0 / 전일 대비 증감 임계치 초과 등 (Reasons 컬럼 참고).',
+  },
+  {
+    label: 'insufficient_history',
+    desc: '전일 대비 증감 체크가 켜져 있으나 비교할 어제 row_count 이력이 없어 판정 보류 (다른 실패가 없을 때만 부여, 이력이 쌓이면 자연 해소).',
+  },
+]
+
 function describeError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
@@ -126,7 +138,22 @@ export function History() {
               <tr>
                 <th>Checked at</th>
                 <th>Dataset.Table</th>
-                <th>Status</th>
+                <th>
+                  Status{' '}
+                  <span className="info-tip" tabIndex={0}>
+                    <span className="info-icon" aria-hidden="true">ⓘ</span>
+                    <span className="info-tip-body" role="tooltip">
+                      <strong>Status 의미</strong>
+                      <ul>
+                        {SNAPSHOT_STATUS_HELP.map((item) => (
+                          <li key={item.label}>
+                            <code>{item.label}</code> — {item.desc}
+                          </li>
+                        ))}
+                      </ul>
+                    </span>
+                  </span>
+                </th>
                 <th>Reasons</th>
                 <th>Today rows</th>
                 <th>Δ%</th>

@@ -226,6 +226,68 @@ nav {
 .status-fail { background: #c62828; color: #fff; }
 .status-insufficient_history { background: #f57c00; color: #fff; }
 
+.info-icon {
+  display: inline-block;
+  margin-left: 0.25rem;
+  color: #1976d2;
+  cursor: help;
+  font-weight: 600;
+  font-style: normal;
+  user-select: none;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+  outline: none;
+}
+.info-tip-body {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 280px;
+  max-width: 420px;
+  padding: 0.6rem 0.75rem;
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  font-weight: 400;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  transition: opacity 80ms ease-in;
+  pointer-events: none;
+}
+.info-tip:hover .info-tip-body,
+.info-tip:focus .info-tip-body,
+.info-tip:focus-within .info-tip-body {
+  visibility: visible;
+  opacity: 1;
+}
+.info-tip-body strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+}
+.info-tip-body ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+.info-tip-body li { margin: 0.2rem 0; }
+.info-tip-body code {
+  background: #f1f3f5;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+}
+
 .muted-cell {
   color: #888;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
