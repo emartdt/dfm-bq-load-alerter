@@ -435,6 +435,14 @@ p { margin: 0 0 var(--sp-sm); }
 }
 .grid-table tbody tr:last-child td { border-bottom: 0; }
 .grid-table tbody tr:hover { background: rgba(0, 102, 204, 0.03); }
+.grid-table thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.grid-table thead th.sortable:hover {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
 .grid-table .empty {
   text-align: center;
   padding: var(--sp-xxl) 0;

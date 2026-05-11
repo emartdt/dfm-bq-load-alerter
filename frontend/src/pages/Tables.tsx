@@ -38,6 +38,29 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
 type FrequencyFilter = 'all' | 'daily' | 'monthly'
 type ActiveFilter = 'all' | 'active' | 'inactive'
 
+type SortKey =
+  | 'project_id'
+  | 'dataset'
+  | 'table_name'
+  | 'frequency'
+  | 'batch_time'
+  | 'buffer_minutes'
+  | 'batch_day_of_month'
+  | 'delta_threshold_percent'
+  | 'latest_etl_row_count'
+  | 'note'
+  | 'active'
+type SortDir = 'asc' | 'desc'
+
+function compareValues(a: unknown, b: unknown): number {
+  if (a === b) return 0
+  if (a === null || a === undefined) return 1
+  if (b === null || b === undefined) return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  if (typeof a === 'boolean' && typeof b === 'boolean') return a === b ? 0 : a ? -1 : 1
+  return String(a).localeCompare(String(b), undefined, { numeric: true })
+}
+
 function describeError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
@@ -73,17 +96,22 @@ export function Tables() {
   const [lastRun, setLastRun] = useState<RunNowResponse | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
 
+  const [projectQuery, setProjectQuery] = useState<string>('')
   const [datasetQuery, setDatasetQuery] = useState<string>('')
   const [tableQuery, setTableQuery] = useState<string>('')
   const [frequencyFilter, setFrequencyFilter] = useState<FrequencyFilter>('all')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all')
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(20)
 
   const filteredRows = useMemo(() => {
+    const pj = projectQuery.trim().toLowerCase()
     const ds = datasetQuery.trim().toLowerCase()
     const tn = tableQuery.trim().toLowerCase()
     return rows.filter((r) => {
+      if (pj && !(r.project_id ?? '').toLowerCase().includes(pj)) return false
       if (ds && !r.dataset.toLowerCase().includes(ds)) return false
       if (tn && !r.table_name.toLowerCase().includes(tn)) return false
       if (frequencyFilter !== 'all' && r.frequency !== frequencyFilter) return false
@@ -91,24 +119,64 @@ export function Tables() {
       if (activeFilter === 'inactive' && r.active) return false
       return true
     })
-  }, [rows, datasetQuery, tableQuery, frequencyFilter, activeFilter])
+  }, [rows, projectQuery, datasetQuery, tableQuery, frequencyFilter, activeFilter])
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const sortedRows = useMemo(() => {
+    if (sortKey === null) return filteredRows
+    const sign = sortDir === 'asc' ? 1 : -1
+    return [...filteredRows].sort((a, b) => {
+      const cmp = compareValues(a[sortKey], b[sortKey])
+      if (cmp !== 0) return cmp * sign
+      return a.id - b.id
+    })
+  }, [filteredRows, sortKey, sortDir])
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize))
   const currentPage = Math.min(page, totalPages)
   const pageStart = (currentPage - 1) * pageSize
-  const pagedRows = filteredRows.slice(pageStart, pageStart + pageSize)
+  const pagedRows = sortedRows.slice(pageStart, pageStart + pageSize)
 
   useEffect(() => {
     setPage(1)
-  }, [datasetQuery, tableQuery, frequencyFilter, activeFilter, pageSize])
+  }, [
+    projectQuery,
+    datasetQuery,
+    tableQuery,
+    frequencyFilter,
+    activeFilter,
+    sortKey,
+    sortDir,
+    pageSize,
+  ])
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey !== key) {
+      setSortKey(key)
+      setSortDir('asc')
+      return
+    }
+    if (sortDir === 'asc') {
+      setSortDir('desc')
+      return
+    }
+    setSortKey(null)
+    setSortDir('asc')
+  }
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return ''
+    return sortDir === 'asc' ? ' ▲' : ' ▼'
+  }
 
   const resetFilters = () => {
+    setProjectQuery('')
     setDatasetQuery('')
     setTableQuery('')
     setFrequencyFilter('all')
     setActiveFilter('all')
   }
   const hasActiveFilter =
+    projectQuery.trim() !== '' ||
     datasetQuery.trim() !== '' ||
     tableQuery.trim() !== '' ||
     frequencyFilter !== 'all' ||
@@ -434,6 +502,14 @@ export function Tables() {
 
       <div className="filter-bar">
         <label className="filter-field">
+          <span>프로젝트</span>
+          <input
+            value={projectQuery}
+            onChange={(e) => setProjectQuery(e.target.value)}
+            placeholder="project 검색"
+          />
+        </label>
+        <label className="filter-field">
           <span>데이터셋</span>
           <input
             value={datasetQuery}
@@ -485,17 +561,39 @@ export function Tables() {
       <table className="grid-table">
         <thead>
           <tr>
-            <th>프로젝트</th>
-            <th>데이터셋</th>
-            <th>테이블</th>
-            <th>주기</th>
-            <th>배치</th>
-            <th>버퍼(분)</th>
-            <th>월일</th>
-            <th>Δ%</th>
-            <th>최근 ETL row count</th>
-            <th>메모</th>
-            <th>활성</th>
+            <th className="sortable" onClick={() => toggleSort('project_id')}>
+              프로젝트{sortIndicator('project_id')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('dataset')}>
+              데이터셋{sortIndicator('dataset')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('table_name')}>
+              테이블{sortIndicator('table_name')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('frequency')}>
+              주기{sortIndicator('frequency')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('batch_time')}>
+              배치{sortIndicator('batch_time')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('buffer_minutes')}>
+              버퍼(분){sortIndicator('buffer_minutes')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('batch_day_of_month')}>
+              월일{sortIndicator('batch_day_of_month')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('delta_threshold_percent')}>
+              Δ%{sortIndicator('delta_threshold_percent')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('latest_etl_row_count')}>
+              최근 ETL row count{sortIndicator('latest_etl_row_count')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('note')}>
+              메모{sortIndicator('note')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('active')}>
+              활성{sortIndicator('active')}
+            </th>
             <th>작업</th>
           </tr>
         </thead>
