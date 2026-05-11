@@ -75,7 +75,8 @@ def _build_email_body(now: datetime, message: str | None) -> tuple[str, str]:
         f'<p>이 메일은 SMTP 설정 검증용으로 발송된 더미 메시지입니다.</p>'
         f'<p>발송 시각(KST): <b>{ts}</b></p>'
         f'{note_html}'
-        '<hr><p style="font-size:12px;color:#888;">dfm-bq-load-alerter · /api/notifier/test-send</p>'
+        '<hr><p style="font-size:12px;color:#888;">'
+        'dfm-bq-load-alerter · /api/notifier/test-send</p>'
         '</body></html>'
     )
     return subject, html
@@ -129,9 +130,9 @@ def _build_teams_card(now: datetime, message: str | None) -> dict:
 
 @router.post("/test-send", response_model=TestSendResponse)
 async def test_send(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    _principal: Annotated[dict, Depends(require_admin)],
-    payload: TestSendIn | None = None,
+        session: Annotated[AsyncSession, Depends(get_session)],
+        _principal: Annotated[dict, Depends(require_admin)],
+        payload: TestSendIn | None = None,
 ) -> TestSendResponse:
     """이메일/Teams 채널 발송이 실제로 도달하는지 검증.
 
