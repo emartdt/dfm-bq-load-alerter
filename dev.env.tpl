@@ -27,4 +27,4 @@ DFM_ALERT_LOG_LEVEL=DEBUG
 DFM_ALERT_STATIC_DIR=/nonexistent/dfm-bq-load-alerter-dev
 
 # BigQuery 연동은 로컬에서 보통 비활성.
-# DFM_ALERT_BQ_PROJECT_ID=op://Shinsegae/dfm-dev-bq-load-alerter/bq_project_id
+DFM_ALERT_BQ_PROJECT_ID=op://Shinsegae/dfm-dev-bq-load-alerter/bq_project_id
