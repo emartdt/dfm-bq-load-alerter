@@ -54,11 +54,17 @@ if ! kubectl --context "${CONTEXT}" -n "${NAMESPACE}" get secret tls-wildcard-sh
   echo "      datafabric-platform 네임스페이스에서 복제 절차는 docs/deployment.md 참조." >&2
 fi
 
+# 운영(onprem-prd) 전용 시크릿 참조 — 이름이 바뀌면 함께 갱신할 것.
+SMTP_SECRET="${SMTP_SECRET:-dfm-bq-load-alerter-smtp}"
+TEAMS_DEFAULT_WEBHOOK_SECRET="${TEAMS_DEFAULT_WEBHOOK_SECRET:-dfm-bq-load-alerter-teams-default}"
+
 helm upgrade --install "${RELEASE_NAME}" "${CHART_PATH}" \
   --kube-context "${CONTEXT}" \
   --namespace "${NAMESPACE}" \
   --set image.repository="${IMAGE}" \
   --set image.tag="${VERSION}" \
+  --set smtp.secretRef="${SMTP_SECRET}" \
+  --set teams.defaultWebhookSecretRef="${TEAMS_DEFAULT_WEBHOOK_SECRET}" \
   --wait --timeout 5m \
   ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 
