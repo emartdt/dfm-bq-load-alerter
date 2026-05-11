@@ -288,6 +288,7 @@ export function Tables() {
             <th>Buffer(분)</th>
             <th>DOM</th>
             <th>Δ%</th>
+            <th>최근 ETL row count</th>
             <th>Note</th>
             <th>Active</th>
             <th>Actions</th>
@@ -296,7 +297,7 @@ export function Tables() {
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={11} className="empty">
+              <td colSpan={12} className="empty">
                 no tables registered
               </td>
             </tr>
@@ -313,6 +314,11 @@ export function Tables() {
               <td>{r.buffer_minutes ?? '(default)'}</td>
               <td>{r.batch_day_of_month ?? ''}</td>
               <td>{r.delta_threshold_percent ?? '(default)'}</td>
+              <td className="numeric-cell">
+                {r.latest_etl_row_count === null
+                  ? '—'
+                  : r.latest_etl_row_count.toLocaleString()}
+              </td>
               <td className="muted-cell" title={r.note ?? ''}>
                 {r.note && r.note.length > 24 ? `${r.note.slice(0, 24)}…` : r.note ?? ''}
               </td>

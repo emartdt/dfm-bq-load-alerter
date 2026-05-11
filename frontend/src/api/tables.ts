@@ -17,6 +17,7 @@ export interface TableRow {
   cond_buffer_load: boolean
   cond_delta_rowcount: boolean
   active: boolean
+  latest_etl_row_count: number | null
   created_at: string
   updated_at: string
 }

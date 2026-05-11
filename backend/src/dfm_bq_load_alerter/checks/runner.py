@@ -166,5 +166,8 @@ async def run_checks(
         session.add(snapshot)
         snapshots.append(snapshot)
 
+        if metadata.row_count is not None:
+            table.latest_etl_row_count = metadata.row_count
+
     await session.flush()
     return snapshots

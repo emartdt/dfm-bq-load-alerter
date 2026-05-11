@@ -181,6 +181,15 @@ class Table(Base):
         nullable=True,
         comment="ack 를 설정한 BO 사용자 FK (감사 추적용).",
     )
+    latest_etl_row_count: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment=(
+            "최근 체크에서 관측된 BigQuery 테이블 행 수. "
+            "체크 실행 시 metadata.row_count 로 갱신되며, "
+            "조회 실패/미수행 시에는 갱신하지 않는다 (이전 값 유지)."
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
