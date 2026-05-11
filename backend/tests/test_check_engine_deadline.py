@@ -1,4 +1,4 @@
-"""evaluate(): deadline buffer suppression (PR-C)."""
+"""evaluate(): batch_time + buffer_minutes 윈도우 억제 동작."""
 from __future__ import annotations
 
 from datetime import datetime, time
@@ -9,6 +9,10 @@ from dfm_bq_load_alerter.checks.engine import evaluate
 from dfm_bq_load_alerter.db.models import CheckStatus
 
 KST = ZoneInfo("Asia/Seoul")
+
+# batch=05:00 + buffer=240분 → 윈도우 끝 09:00.
+BATCH_TIME = time(5, 0)
+BUFFER_MINUTES = 240
 
 
 def _md(*, last_modified: datetime | None, row_count: int | None) -> TableMetadata:
@@ -21,37 +25,39 @@ def _md(*, last_modified: datetime | None, row_count: int | None) -> TableMetada
     )
 
 
-def test_pre_deadline_with_no_load_does_not_fail() -> None:
-    """At 06:00 KST with deadline 09:00, missing load is still in buffer."""
+def test_pre_window_end_with_no_load_does_not_fail() -> None:
+    """At 06:00 KST with window end 09:00, missing load is still in buffer."""
     now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
     md = _md(last_modified=None, row_count=None)
     result = evaluate(
         md,
         yesterday_row_count=1000,
         delta_threshold_percent=25.0,
-        deadline_time=time(9, 0),
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
         now=now,
     )
     assert result.status == CheckStatus.ok
     assert "missing_last_modified" not in result.failure_reasons
 
 
-def test_post_deadline_with_no_load_fails() -> None:
-    """At 09:30 KST with deadline 09:00, missing load is now a FAIL."""
+def test_post_window_end_with_no_load_fails() -> None:
+    """At 09:30 KST with window end 09:00, missing load is now a FAIL."""
     now = datetime(2026, 5, 7, 9, 30, tzinfo=KST)
     md = _md(last_modified=None, row_count=None)
     result = evaluate(
         md,
         yesterday_row_count=1000,
         delta_threshold_percent=25.0,
-        deadline_time=time(9, 0),
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
         now=now,
     )
     assert result.status == CheckStatus.fail
     assert "missing_last_modified" in result.failure_reasons
 
 
-def test_pre_deadline_with_yesterday_last_modified_is_not_a_fail() -> None:
+def test_pre_window_end_with_yesterday_last_modified_is_not_a_fail() -> None:
     """A table whose last_modified is yesterday's date but we're still in
     buffer must NOT raise not_updated_today_kst."""
     now = datetime(2026, 5, 7, 7, 0, tzinfo=KST)
@@ -61,14 +67,15 @@ def test_pre_deadline_with_yesterday_last_modified_is_not_a_fail() -> None:
         md,
         yesterday_row_count=1000,
         delta_threshold_percent=25.0,
-        deadline_time=time(9, 0),
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
         now=now,
     )
     assert "not_updated_today_kst" not in result.failure_reasons
 
 
 def test_row_count_zero_is_a_fail_even_in_buffer() -> None:
-    """Row count == 0 is a fail regardless of deadline (loaded but empty)."""
+    """Row count == 0 is a fail regardless of buffer (loaded but empty)."""
     now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
     today = datetime(2026, 5, 7, 5, 30, tzinfo=KST)
     md = _md(last_modified=today, row_count=0)
@@ -76,7 +83,8 @@ def test_row_count_zero_is_a_fail_even_in_buffer() -> None:
         md,
         yesterday_row_count=1000,
         delta_threshold_percent=25.0,
-        deadline_time=time(9, 0),
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
         now=now,
     )
     assert result.status == CheckStatus.fail

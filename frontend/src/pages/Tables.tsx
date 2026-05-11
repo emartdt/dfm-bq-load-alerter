@@ -12,18 +12,17 @@ import {
 } from '../api/tables'
 
 const EMPTY_FORM: TableCreate = {
+  project_id: null,
   dataset: '',
   table_name: '',
   frequency: 'daily',
   batch_time: '05:00',
-  deadline_time: '09:00',
+  buffer_minutes: null,
   batch_day_of_month: null,
   delta_threshold_percent: null,
   note: '',
   cond_buffer_load: true,
   cond_delta_rowcount: true,
-  cond_inflow_time_drift: false,
-  inflow_drift_threshold_minutes: null,
   active: true,
 }
 
@@ -63,6 +62,7 @@ export function Tables() {
     try {
       await createTable({
         ...form,
+        project_id: form.project_id?.trim() ? form.project_id.trim() : null,
         delta_threshold_percent:
           form.delta_threshold_percent === null ||
           form.delta_threshold_percent === undefined
@@ -119,6 +119,19 @@ export function Tables() {
         <h3>Add table</h3>
         <div className="grid">
           <label>
+            Project ID (빈 값=환경 기본)
+            <input
+              value={form.project_id ?? ''}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  project_id: e.target.value === '' ? null : e.target.value,
+                })
+              }
+              placeholder="emart-datafabric"
+            />
+          </label>
+          <label>
             Dataset
             <input
               required
@@ -158,12 +171,19 @@ export function Tables() {
             />
           </label>
           <label>
-            Deadline time (KST)
+            Buffer (분; 빈 값=정책 기본)
             <input
-              type="time"
-              required
-              value={form.deadline_time}
-              onChange={(e) => setForm({ ...form, deadline_time: e.target.value })}
+              type="number"
+              min={1}
+              max={1440}
+              value={form.buffer_minutes ?? ''}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  buffer_minutes: e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+              placeholder="default 30"
             />
           </label>
           {form.frequency === 'monthly' && (
@@ -231,34 +251,6 @@ export function Tables() {
               />
               전일/전월 row count 비교 (Δ%)
             </label>
-            <label className="inline">
-              <input
-                type="checkbox"
-                checked={form.cond_inflow_time_drift ?? false}
-                onChange={(e) =>
-                  setForm({ ...form, cond_inflow_time_drift: e.target.checked })
-                }
-              />
-              유입 시간 비교
-            </label>
-            {form.cond_inflow_time_drift && (
-              <label className="inline">
-                drift 임계치 (분; 빈 값=정책 기본):
-                <input
-                  type="number"
-                  min={1}
-                  max={1440}
-                  value={form.inflow_drift_threshold_minutes ?? ''}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      inflow_drift_threshold_minutes:
-                        e.target.value === '' ? null : Number(e.target.value),
-                    })
-                  }
-                />
-              </label>
-            )}
           </fieldset>
         </div>
         <button type="submit" disabled={busy}>
@@ -288,11 +280,12 @@ export function Tables() {
       <table className="grid-table">
         <thead>
           <tr>
+            <th>Project</th>
             <th>Dataset</th>
             <th>Table</th>
             <th>Freq</th>
             <th>Batch</th>
-            <th>Deadline</th>
+            <th>Buffer(분)</th>
             <th>DOM</th>
             <th>Δ%</th>
             <th>Note</th>
@@ -303,18 +296,21 @@ export function Tables() {
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="empty">
+              <td colSpan={11} className="empty">
                 no tables registered
               </td>
             </tr>
           )}
           {rows.map((r) => (
             <tr key={r.id}>
+              <td className="muted-cell" title={r.project_id ?? ''}>
+                {r.project_id ?? '(default)'}
+              </td>
               <td>{r.dataset}</td>
               <td>{r.table_name}</td>
               <td>{r.frequency}</td>
               <td>{r.batch_time}</td>
-              <td>{r.deadline_time}</td>
+              <td>{r.buffer_minutes ?? '(default)'}</td>
               <td>{r.batch_day_of_month ?? ''}</td>
               <td>{r.delta_threshold_percent ?? '(default)'}</td>
               <td className="muted-cell" title={r.note ?? ''}>

@@ -23,7 +23,7 @@ export function PolicyPage() {
   const [retentionDays, setRetentionDays] = useState<string>('90')
   const [conditionMaxBytes, setConditionMaxBytes] = useState<string>('104857600')
   const [dedupStrategy, setDedupStrategy] = useState<string>('every-hour-resend')
-  const [inflowDrift, setInflowDrift] = useState<string>('60')
+  const [defaultBuffer, setDefaultBuffer] = useState<string>('30')
 
   const refresh = useCallback(async () => {
     setError('')
@@ -36,7 +36,7 @@ export function PolicyPage() {
       setRetentionDays(String(p.retention_days))
       setConditionMaxBytes(String(p.condition_query_max_bytes))
       setDedupStrategy(p.dedup_strategy)
-      setInflowDrift(String(p.default_inflow_drift_minutes))
+      setDefaultBuffer(String(p.default_buffer_minutes))
     } catch (err) {
       setError(describeError(err))
     }
@@ -62,7 +62,7 @@ export function PolicyPage() {
         retention_days: Number(retentionDays),
         condition_query_max_bytes: Number(conditionMaxBytes),
         dedup_strategy: dedupStrategy,
-        default_inflow_drift_minutes: Number(inflowDrift),
+        default_buffer_minutes: Number(defaultBuffer),
       })
       setPolicy(updated)
       setSavedNote(`saved at ${new Date(updated.updated_at).toLocaleString()}`)
@@ -143,13 +143,13 @@ export function PolicyPage() {
               </select>
             </label>
             <label>
-              Default inflow drift (분)
+              Default buffer (분)
               <input
                 type="number"
                 min={1}
                 max={1440}
-                value={inflowDrift}
-                onChange={(e) => setInflowDrift(e.target.value)}
+                value={defaultBuffer}
+                onChange={(e) => setDefaultBuffer(e.target.value)}
               />
             </label>
           </div>

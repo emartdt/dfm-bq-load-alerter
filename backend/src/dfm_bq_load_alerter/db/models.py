@@ -85,6 +85,14 @@ class Table(Base):
         primary_key=True,
         comment="테이블 PK (자동 증가).",
     )
+    project_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment=(
+            "BigQuery 프로젝트 ID. NULL → settings.bq_project_id 폴백. "
+            "GCP project ID 형식 (소문자/숫자/하이픈, 6~30자)."
+        ),
+    )
     dataset: Mapped[str] = mapped_column(
         String(128),
         nullable=False,
@@ -105,10 +113,13 @@ class Table(Base):
         nullable=False,
         comment="예정 적재 시각 (KST). 체크 슬롯 계산의 기준이 되는 시각.",
     )
-    deadline_time: Mapped[time] = mapped_column(
-        Time,
-        nullable=False,
-        comment="적재 마감 시각 (KST). 이 시각 이후로도 미적재 시 FAIL 후보가 됨.",
+    buffer_minutes: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "체크 윈도우 끝점을 batch_time + buffer_minutes 로 결정 (KST). "
+            "NULL → alert_policy.default_buffer_minutes 적용."
+        ),
     )
     batch_day_of_month: Mapped[int | None] = mapped_column(
         Integer,
@@ -152,23 +163,6 @@ class Table(Base):
         default=True,
         server_default="true",
         comment="전일/전월 대비 행 수 변화율 임계치 조건 활성화 여부.",
-    )
-    cond_inflow_time_drift: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-        comment=(
-            "유입 시각 드리프트 조건 활성화 여부. "
-            "true 이면 오늘 last_modified 시각과 전일 시각 차이를 "
-            "inflow_drift_threshold_minutes "
-            "(없으면 alert_policy.default_inflow_drift_minutes) 와 비교."
-        ),
-    )
-    inflow_drift_threshold_minutes: Mapped[int | None] = mapped_column(
-        Integer,
-        nullable=True,
-        comment="테이블별 유입 시각 드리프트 임계치(분). NULL 이면 alert_policy 기본값을 사용.",
     )
     active: Mapped[bool] = mapped_column(
         Boolean,
@@ -557,14 +551,14 @@ class AlertPolicy(Base):
         default=104857600,
         comment="사용자 정의 condition_query 의 BigQuery 처리 바이트 상한. 기본 100MiB(104857600).",
     )
-    default_inflow_drift_minutes: Mapped[int] = mapped_column(
+    default_buffer_minutes: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        default=60,
-        server_default="60",
+        default=30,
+        server_default="30",
         comment=(
-            "유입 시각 드리프트 전역 기본 임계치(분). "
-            "테이블별 inflow_drift_threshold_minutes 가 NULL 일 때 적용."
+            "버퍼(분) 전역 기본값. 테이블별 buffer_minutes 가 NULL 일 때 적용. "
+            "체크 윈도우 끝점 = batch_time + 이 값."
         ),
     )
     updated_at: Mapped[datetime] = mapped_column(

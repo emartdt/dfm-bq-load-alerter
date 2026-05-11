@@ -4,53 +4,50 @@ export type Frequency = 'daily' | 'monthly'
 
 export interface TableRow {
   id: number
+  project_id: string | null
   dataset: string
   table_name: string
   frequency: Frequency
   batch_time: string // HH:MM:SS
-  deadline_time: string
+  buffer_minutes: number | null
   batch_day_of_month: number | null
   delta_threshold_percent: number | null
   condition_query: string | null
   note: string | null
   cond_buffer_load: boolean
   cond_delta_rowcount: boolean
-  cond_inflow_time_drift: boolean
-  inflow_drift_threshold_minutes: number | null
   active: boolean
   created_at: string
   updated_at: string
 }
 
 export interface TableCreate {
+  project_id?: string | null
   dataset: string
   table_name: string
   frequency: Frequency
   batch_time: string
-  deadline_time: string
+  buffer_minutes?: number | null
   batch_day_of_month?: number | null
   delta_threshold_percent?: number | null
   condition_query?: string | null
   note?: string | null
   cond_buffer_load?: boolean
   cond_delta_rowcount?: boolean
-  cond_inflow_time_drift?: boolean
-  inflow_drift_threshold_minutes?: number | null
   active?: boolean
 }
 
 export interface TablePatch {
+  project_id?: string | null
   frequency?: Frequency
   batch_time?: string
-  deadline_time?: string
+  buffer_minutes?: number | null
   batch_day_of_month?: number | null
   delta_threshold_percent?: number | null
   condition_query?: string | null
   note?: string | null
   cond_buffer_load?: boolean
   cond_delta_rowcount?: boolean
-  cond_inflow_time_drift?: boolean
-  inflow_drift_threshold_minutes?: number | null
   active?: boolean
 }
 

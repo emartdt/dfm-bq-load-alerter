@@ -98,10 +98,14 @@ def fetch_metadata(
     dataset: str,
     table_name: str,
     *,
+    project_id: str | None = None,
     client: bigquery.Client | None = None,
     force_count: bool = False,
 ) -> TableMetadata:
     """Fetch monitoring metadata for a single BigQuery table.
+
+    `project_id` 가 주어지면 그 프로젝트의 클라이언트를 사용 (테이블별 라우팅).
+    `client` 가 명시되면 우선. 둘 다 None 이면 settings.bq_project_id 폴백.
 
     Strategy:
     1. Read __TABLES__ for last_modified + row_count (low-cost metadata).
@@ -110,7 +114,7 @@ def fetch_metadata(
     3. Read STREAMING_TIMELINE for recent buffer rows; combine if streaming
        is active.
     """
-    bq = client or get_client()
+    bq = client or get_client(project_id)
     last_modified, row_count = _query_metadata(bq, dataset, table_name)
     used_count_fallback = False
 
