@@ -57,6 +57,17 @@ probes:
     initialDelaySeconds: 5
     periodSeconds: 10
 
+# Corporate forward proxy.
+# datafabric-platform/datafabric-manager 와 동일 패턴 — 사내망에서 외부 인터넷
+# (Teams Incoming Webhook, Google APIs 등) 호출이 막혀 있어 forward proxy 필요.
+# - http/https 값은 httpx/requests 가 인식하는 URL 형식 (`http://host:port`).
+# - no_proxy 는 내부 도메인/클러스터 DNS — 프록시 미경유 트래픽.
+# 비워두면 env 가 주입되지 않아 직결 시도. dev 환경에서는 비워둘 것.
+proxy:
+  http: "http://proxy.shinsegae.ai:10203"
+  https: "http://proxy.shinsegae.ai:10203"
+  no_proxy: "localhost,127.0.0.1,.svc,.cluster.local,.shinsegae.ai"
+
 # Plain (non-secret) configuration injected as DFM_ALERT_* env vars.
 env:
   DFM_ALERT_LOG_LEVEL: INFO

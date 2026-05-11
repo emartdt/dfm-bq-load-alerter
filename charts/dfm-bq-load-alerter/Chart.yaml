@@ -2,7 +2,7 @@ apiVersion: v2
 name: dfm-bq-load-alerter
 description: DFM BigQuery 적재 알림 컴포넌트
 type: application
-version: 0.6.0
-appVersion: "0.6.0"
+version: 0.6.1
+appVersion: "0.6.1"
 maintainers:
   - name: DFM Platform Team
