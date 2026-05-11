@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 
 import {
@@ -6,8 +6,10 @@ import {
   deleteTable,
   listTables,
   runNow,
+  updateTable,
   type RunNowResponse,
   type TableCreate,
+  type TablePatch,
   type TableRow,
 } from '../api/tables'
 
@@ -40,13 +42,32 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+function rowToForm(row: TableRow): TableCreate {
+  return {
+    project_id: row.project_id,
+    dataset: row.dataset,
+    table_name: row.table_name,
+    frequency: row.frequency,
+    batch_time: row.batch_time.slice(0, 5),
+    buffer_minutes: row.buffer_minutes,
+    batch_day_of_month: row.batch_day_of_month,
+    delta_threshold_percent: row.delta_threshold_percent,
+    note: row.note ?? '',
+    cond_buffer_load: row.cond_buffer_load,
+    cond_delta_rowcount: row.cond_delta_rowcount,
+    active: row.active,
+  }
+}
+
 export function Tables() {
   const [rows, setRows] = useState<TableRow[]>([])
   const [form, setForm] = useState<TableCreate>(EMPTY_FORM)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
   const [notify, setNotify] = useState<boolean>(false)
   const [lastRun, setLastRun] = useState<RunNowResponse | null>(null)
+  const formRef = useRef<HTMLFormElement | null>(null)
 
   const refresh = useCallback(async () => {
     setError('')
@@ -61,26 +82,57 @@ export function Tables() {
     void refresh()
   }, [refresh])
 
-  const onCreate = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setForm(EMPTY_FORM)
+    setEditingId(null)
+  }
+
+  const onEdit = (row: TableRow) => {
+    setForm(rowToForm(row))
+    setEditingId(row.id)
+    setError('')
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setError('')
     try {
-      await createTable({
-        ...form,
+      const normalized = {
         project_id: form.project_id?.trim() ? form.project_id.trim() : null,
+        frequency: form.frequency,
+        batch_time: form.batch_time,
+        buffer_minutes:
+          form.buffer_minutes === null || form.buffer_minutes === undefined
+            ? null
+            : Number(form.buffer_minutes),
+        batch_day_of_month:
+          form.batch_day_of_month === null || form.batch_day_of_month === undefined
+            ? null
+            : Number(form.batch_day_of_month),
         delta_threshold_percent:
           form.delta_threshold_percent === null ||
           form.delta_threshold_percent === undefined
             ? null
             : Number(form.delta_threshold_percent),
-        batch_day_of_month:
-          form.batch_day_of_month === null || form.batch_day_of_month === undefined
-            ? null
-            : Number(form.batch_day_of_month),
         note: form.note?.trim() ? form.note.trim() : null,
-      })
-      setForm(EMPTY_FORM)
+        cond_buffer_load: form.cond_buffer_load ?? true,
+        cond_delta_rowcount: form.cond_delta_rowcount ?? true,
+        active: form.active ?? true,
+      }
+
+      if (editingId !== null) {
+        const patch: TablePatch = { ...normalized }
+        await updateTable(editingId, patch)
+      } else {
+        await createTable({
+          ...normalized,
+          dataset: form.dataset,
+          table_name: form.table_name,
+        })
+      }
+      resetForm()
       await refresh()
     } catch (err) {
       setError(describeError(err))
@@ -95,6 +147,7 @@ export function Tables() {
     setError('')
     try {
       await deleteTable(id)
+      if (editingId === id) resetForm()
       await refresh()
     } catch (err) {
       setError(describeError(err))
@@ -116,6 +169,8 @@ export function Tables() {
     }
   }
 
+  const isEditing = editingId !== null
+
   return (
     <section>
       <header className="page-header">
@@ -125,9 +180,15 @@ export function Tables() {
 
       {error && <p className="error">{error}</p>}
 
-      <form className="card" onSubmit={onCreate}>
-        <h2 className="card-title">테이블 추가</h2>
-        <p className="card-subtitle">데이터셋·테이블·배치 시간을 입력하면 다음 cron 부터 모니터링됩니다.</p>
+      <form className="card" onSubmit={onSubmit} ref={formRef}>
+        <h2 className="card-title">
+          {isEditing ? `테이블 수정 · ${form.dataset}.${form.table_name}` : '테이블 추가'}
+        </h2>
+        <p className="card-subtitle">
+          {isEditing
+            ? '데이터셋과 테이블 이름은 식별자이므로 수정할 수 없습니다.'
+            : '데이터셋·테이블·배치 시간을 입력하면 다음 cron 부터 모니터링됩니다.'}
+        </p>
 
         <div className="form-grid">
           <label className="field">
@@ -150,6 +211,7 @@ export function Tables() {
             <input
               required
               value={form.dataset}
+              disabled={isEditing}
               onChange={(e) => setForm({ ...form, dataset: e.target.value })}
               placeholder="bw"
             />
@@ -159,6 +221,7 @@ export function Tables() {
             <input
               required
               value={form.table_name}
+              disabled={isEditing}
               onChange={(e) => setForm({ ...form, table_name: e.target.value })}
               placeholder="PZEVENTID"
             />
@@ -239,6 +302,16 @@ export function Tables() {
               placeholder="기본 25"
             />
           </label>
+          <label className="field">
+            <span>활성 여부</span>
+            <select
+              value={form.active ? 'true' : 'false'}
+              onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}
+            >
+              <option value="true">활성</option>
+              <option value="false">비활성</option>
+            </select>
+          </label>
           <label className="field span-2">
             <span>
               메모 <span className="field-hint">운영 메모, 알림 본문에 노출</span>
@@ -273,9 +346,21 @@ export function Tables() {
             </label>
           </fieldset>
         </div>
-        <button type="submit" className="btn btn-primary" disabled={busy}>
-          {busy ? '저장 중…' : '추가'}
-        </button>
+        <div className="btn-row">
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? '저장 중…' : isEditing ? '저장' : '추가'}
+          </button>
+          {isEditing && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={resetForm}
+              disabled={busy}
+            >
+              취소
+            </button>
+          )}
+        </div>
       </form>
 
       <div className="actions">
@@ -302,6 +387,7 @@ export function Tables() {
         )}
       </div>
 
+      <div className="table-scroll">
       <table className="grid-table">
         <thead>
           <tr>
@@ -328,7 +414,7 @@ export function Tables() {
             </tr>
           )}
           {rows.map((r) => (
-            <tr key={r.id}>
+            <tr key={r.id} className={editingId === r.id ? 'selected-row' : undefined}>
               <td className="muted-cell" title={r.project_id ?? ''}>
                 {r.project_id ?? '(기본)'}
               </td>
@@ -358,6 +444,13 @@ export function Tables() {
                     실행
                   </button>
                   <button
+                    className="btn btn-secondary btn-small"
+                    onClick={() => onEdit(r)}
+                    disabled={busy}
+                  >
+                    수정
+                  </button>
+                  <button
                     className="btn btn-danger btn-small"
                     onClick={() => void onDelete(r.id)}
                     disabled={busy}
@@ -370,6 +463,7 @@ export function Tables() {
           ))}
         </tbody>
       </table>
+      </div>
 
       {lastRun && (
         <section className="run-result">

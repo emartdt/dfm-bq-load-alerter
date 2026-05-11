@@ -137,6 +137,7 @@ export function Recipients() {
         </button>
       </form>
 
+      <div className="table-scroll">
       <table className="grid-table">
         <thead>
           <tr>
@@ -181,6 +182,7 @@ export function Recipients() {
           ))}
         </tbody>
       </table>
+      </div>
     </section>
   )
 }

@@ -159,6 +159,7 @@ export function History() {
               {snaps.length} / {snapsTotal}건 표시
             </span>
           </div>
+          <div className="table-scroll">
           <table className="grid-table">
             <thead>
               <tr>
@@ -219,6 +220,7 @@ export function History() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       ) : (
         <>
@@ -261,6 +263,7 @@ export function History() {
               {events.length} / {eventsTotal}건 표시
             </span>
           </div>
+          <div className="table-scroll">
           <table className="grid-table">
             <thead>
               <tr>
@@ -304,6 +307,7 @@ export function History() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </section>

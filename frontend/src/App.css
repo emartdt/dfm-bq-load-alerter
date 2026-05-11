@@ -329,7 +329,8 @@ p { margin: 0 0 var(--sp-sm); }
 .btn-row {
   display: inline-flex;
   gap: var(--sp-xs);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* Status / Badge */
@@ -395,18 +396,26 @@ p { margin: 0 0 var(--sp-sm); }
 }
 
 /* Tables */
-.grid-table {
+.table-scroll {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  overflow-x: auto;
   background: var(--color-canvas);
   border: 1px solid var(--color-hairline);
   border-radius: var(--r-lg);
-  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.grid-table {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--color-canvas);
   font-family: var(--font-text);
   font-size: 14px;
   letter-spacing: -0.224px;
+  word-break: keep-all;
 }
+.table-scroll .grid-table { border: 0; border-radius: 0; }
 .grid-table th,
 .grid-table td {
   padding: 12px var(--sp-md);
@@ -414,6 +423,8 @@ p { margin: 0 0 var(--sp-sm); }
   border-bottom: 1px solid var(--color-divider-soft);
   vertical-align: middle;
 }
+.grid-table th { white-space: nowrap; }
+.grid-table td { word-break: keep-all; }
 .grid-table thead th {
   background: var(--color-canvas-parchment);
   font-weight: 600;

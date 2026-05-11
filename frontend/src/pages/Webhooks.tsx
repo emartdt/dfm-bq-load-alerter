@@ -155,6 +155,7 @@ export function Webhooks() {
         </button>
       </form>
 
+      <div className="table-scroll">
       <table className="grid-table">
         <thead>
           <tr>
@@ -206,6 +207,7 @@ export function Webhooks() {
           ))}
         </tbody>
       </table>
+      </div>
 
       {testResult && (
         <p className={`run-meta status status-${testResult.result.ok ? 'ok' : 'fail'}`}>
