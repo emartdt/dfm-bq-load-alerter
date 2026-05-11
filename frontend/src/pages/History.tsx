@@ -14,6 +14,40 @@ import {
 
 const PAGE_SIZE = 50
 
+const SNAPSHOT_STATUS_LABEL: Record<string, string> = {
+  ok: '정상',
+  fail: '실패',
+  insufficient_history: '이력 부족',
+}
+
+const EVENT_STATUS_LABEL: Record<string, string> = {
+  sent: '전송됨',
+  failed: '실패',
+  skipped: '건너뜀',
+}
+
+const CHANNEL_LABEL: Record<string, string> = {
+  email: '이메일',
+  teams: 'Teams',
+}
+
+const TRIGGER_LABEL: Record<string, string> = {
+  check: '주기 점검',
+  report: '리포트',
+}
+
+const SNAPSHOT_STATUS_HELP: Array<{ label: string; desc: string }> = [
+  { label: 'ok', desc: '활성화된 모든 체크 통과 (정상 적재).' },
+  {
+    label: 'fail',
+    desc: '실패 사유 발견 — window 내 미적재 / row_count=0 / 전일 대비 증감 임계치 초과 등 (사유 컬럼 참고).',
+  },
+  {
+    label: 'insufficient_history',
+    desc: '전일 대비 증감 체크가 켜져 있으나 비교할 어제 row_count 이력이 없어 판정 보류 (다른 실패가 없을 때만 부여, 이력이 쌓이면 자연 해소).',
+  },
+]
+
 function describeError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
@@ -81,24 +115,28 @@ export function History() {
   }, [tab, loadSnaps, loadEvents])
 
   return (
-    <section className="tables-page">
-      <h2>History</h2>
+    <section>
+      <header className="page-header">
+        <h1 className="page-title">이력</h1>
+        <p className="page-subtitle">점검 스냅샷과 발송된 알림 이벤트를 조회합니다.</p>
+      </header>
+
       {error && <p className="error">{error}</p>}
 
-      <nav className="tab-nav">
+      <nav className="tab-nav" aria-label="이력 탭">
         <button
           type="button"
           className={tab === 'snapshots' ? 'tab tab-active' : 'tab'}
           onClick={() => setTab('snapshots')}
         >
-          Check snapshots
+          점검 스냅샷
         </button>
         <button
           type="button"
           className={tab === 'events' ? 'tab tab-active' : 'tab'}
           onClick={() => setTab('events')}
         >
-          Alert events
+          알림 이벤트
         </button>
       </nav>
 
@@ -106,29 +144,47 @@ export function History() {
         <>
           <div className="actions">
             <label>
-              Status filter{' '}
+              상태 필터{' '}
               <select
                 value={snapStatus}
                 onChange={(e) => setSnapStatus(e.target.value as SnapshotStatus | '')}
               >
-                <option value="">(all)</option>
-                <option value="ok">ok</option>
-                <option value="fail">fail</option>
-                <option value="insufficient_history">insufficient_history</option>
+                <option value="">전체</option>
+                <option value="ok">정상</option>
+                <option value="fail">실패</option>
+                <option value="insufficient_history">이력 부족</option>
               </select>
             </label>
             <span className="run-meta">
-              showing {snaps.length} / {snapsTotal}
+              {snaps.length} / {snapsTotal}건 표시
             </span>
           </div>
+          <div className="table-scroll">
           <table className="grid-table">
             <thead>
               <tr>
-                <th>Checked at</th>
-                <th>Dataset.Table</th>
-                <th>Status</th>
-                <th>Reasons</th>
-                <th>Today rows</th>
+                <th>점검 시각</th>
+                <th>데이터셋.테이블</th>
+                <th>
+                  상태{' '}
+                  <span className="info-tip" tabIndex={0}>
+                    <span className="info-icon" aria-hidden="true">
+                      ⓘ
+                    </span>
+                    <span className="info-tip-body" role="tooltip">
+                      <strong>상태 의미</strong>
+                      <ul>
+                        {SNAPSHOT_STATUS_HELP.map((item) => (
+                          <li key={item.label}>
+                            <code>{item.label}</code> — {item.desc}
+                          </li>
+                        ))}
+                      </ul>
+                    </span>
+                  </span>
+                </th>
+                <th>사유</th>
+                <th>금일 rows</th>
                 <th>Δ%</th>
               </tr>
             </thead>
@@ -136,26 +192,26 @@ export function History() {
               {snaps.length === 0 && !busy && (
                 <tr>
                   <td colSpan={6} className="empty">
-                    no snapshots
+                    스냅샷이 없습니다.
                   </td>
                 </tr>
               )}
               {snaps.map((s) => (
                 <tr key={s.id}>
-                  <td className="muted-cell">
-                    {new Date(s.checked_at).toLocaleString()}
-                  </td>
+                  <td className="muted-cell">{new Date(s.checked_at).toLocaleString()}</td>
                   <td>
                     {s.dataset}.{s.table_name}
                   </td>
                   <td>
-                    <span className={`status status-${s.status}`}>{s.status}</span>
+                    <span className={`status status-${s.status}`}>
+                      {SNAPSHOT_STATUS_LABEL[s.status] ?? s.status}
+                    </span>
                   </td>
                   <td className="muted-cell">{s.failure_reasons.join(', ') || '-'}</td>
-                  <td className="muted-cell">
+                  <td className="numeric-cell">
                     {s.row_count !== null ? s.row_count.toLocaleString() : '-'}
                   </td>
-                  <td className="muted-cell">
+                  <td className="numeric-cell">
                     {s.delta_percent_vs_yesterday !== null
                       ? `${s.delta_percent_vs_yesterday}%`
                       : '-'}
@@ -164,75 +220,77 @@ export function History() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       ) : (
         <>
           <div className="actions">
             <label>
-              Channel{' '}
+              채널{' '}
               <select
                 value={eventChannel}
                 onChange={(e) => setEventChannel(e.target.value as EventChannel | '')}
               >
-                <option value="">(all)</option>
-                <option value="email">email</option>
-                <option value="teams">teams</option>
+                <option value="">전체</option>
+                <option value="email">이메일</option>
+                <option value="teams">Teams</option>
               </select>
             </label>
             <label>
-              Status{' '}
+              상태{' '}
               <select
                 value={eventStatus}
                 onChange={(e) => setEventStatus(e.target.value as EventStatus | '')}
               >
-                <option value="">(all)</option>
-                <option value="sent">sent</option>
-                <option value="failed">failed</option>
-                <option value="skipped">skipped</option>
+                <option value="">전체</option>
+                <option value="sent">전송됨</option>
+                <option value="failed">실패</option>
+                <option value="skipped">건너뜀</option>
               </select>
             </label>
             <label>
-              Trigger{' '}
+              트리거{' '}
               <select
                 value={trigger}
                 onChange={(e) => setTrigger(e.target.value as TriggerKind | '')}
               >
-                <option value="">(all)</option>
-                <option value="check">check</option>
-                <option value="report">report</option>
+                <option value="">전체</option>
+                <option value="check">주기 점검</option>
+                <option value="report">리포트</option>
               </select>
             </label>
             <span className="run-meta">
-              showing {events.length} / {eventsTotal}
+              {events.length} / {eventsTotal}건 표시
             </span>
           </div>
+          <div className="table-scroll">
           <table className="grid-table">
             <thead>
               <tr>
-                <th>Sent at</th>
-                <th>Trigger</th>
-                <th>Channel</th>
-                <th>Status</th>
-                <th>Summary</th>
-                <th>Error</th>
+                <th>발송 시각</th>
+                <th>트리거</th>
+                <th>채널</th>
+                <th>상태</th>
+                <th>요약</th>
+                <th>오류</th>
               </tr>
             </thead>
             <tbody>
               {events.length === 0 && !busy && (
                 <tr>
                   <td colSpan={6} className="empty">
-                    no events
+                    이벤트가 없습니다.
                   </td>
                 </tr>
               )}
               {events.map((e) => (
                 <tr key={e.id}>
                   <td className="muted-cell">{new Date(e.sent_at).toLocaleString()}</td>
-                  <td>{e.trigger_kind}</td>
-                  <td>{e.channel}</td>
+                  <td>{TRIGGER_LABEL[e.trigger_kind] ?? e.trigger_kind}</td>
+                  <td>{CHANNEL_LABEL[e.channel] ?? e.channel}</td>
                   <td>
-                    <span className={`status status-${e.status === 'sent' ? 'ok' : 'fail'}`}>
-                      {e.status}
+                    <span className={`status status-${e.status}`}>
+                      {EVENT_STATUS_LABEL[e.status] ?? e.status}
                     </span>
                   </td>
                   <td className="muted-cell" title={e.payload_summary ?? ''}>
@@ -249,6 +307,7 @@ export function History() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </section>

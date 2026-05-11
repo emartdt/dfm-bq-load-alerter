@@ -28,7 +28,7 @@ class PolicyOut(BaseModel):
     default_threshold_percent: float
     retention_days: int
     condition_query_max_bytes: int
-    default_inflow_drift_minutes: int
+    default_buffer_minutes: int
     updated_at: datetime
 
 
@@ -44,7 +44,7 @@ class PolicyPatch(BaseModel):
     default_threshold_percent: float | None = Field(default=None, gt=0, le=100)
     retention_days: int | None = Field(default=None, ge=1, le=3650)
     condition_query_max_bytes: int | None = Field(default=None, ge=1024)
-    default_inflow_drift_minutes: int | None = Field(default=None, ge=1, le=1440)
+    default_buffer_minutes: int | None = Field(default=None, ge=1, le=1440)
 
 
 def _validate_check_times(values: list[str]) -> None:
@@ -76,7 +76,7 @@ async def _get_or_create(session: AsyncSession) -> AlertPolicy:
             default_threshold_percent=25.0,
             retention_days=90,
             condition_query_max_bytes=104857600,
-            default_inflow_drift_minutes=60,
+            default_buffer_minutes=30,
         )
         session.add(policy)
         await session.commit()
@@ -92,7 +92,7 @@ def _serialize(policy: AlertPolicy) -> PolicyOut:
         default_threshold_percent=float(policy.default_threshold_percent),
         retention_days=policy.retention_days,
         condition_query_max_bytes=policy.condition_query_max_bytes,
-        default_inflow_drift_minutes=policy.default_inflow_drift_minutes,
+        default_buffer_minutes=policy.default_buffer_minutes,
         updated_at=policy.updated_at,
     )
 

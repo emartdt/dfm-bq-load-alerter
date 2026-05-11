@@ -12,7 +12,6 @@ from dfm_bq_load_alerter import __version__
 from dfm_bq_load_alerter.api import (
     alerts,
     checks,
-    groups,
     health,
     history,
     notifier,
@@ -95,7 +94,6 @@ app.include_router(alerts.router, prefix="/api")  # legacy mock — deprecate in
 app.include_router(tables.router)
 app.include_router(recipients.router)
 app.include_router(webhooks.router)
-app.include_router(groups.router)
 app.include_router(checks.router)
 app.include_router(history.router)
 app.include_router(policy.router)

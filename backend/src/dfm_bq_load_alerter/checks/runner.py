@@ -92,8 +92,8 @@ async def run_checks(
     today = today_kst(actual)
 
     policy = await session.get(AlertPolicy, 1)
-    default_inflow = (
-        policy.default_inflow_drift_minutes if policy is not None else 60
+    default_buffer = (
+        policy.default_buffer_minutes if policy is not None else 30
     )
 
     stmt = select(Table).where(Table.active.is_(True))
@@ -113,7 +113,9 @@ async def run_checks(
             )
             continue
 
-        metadata = fetch_metadata(table.dataset, table.table_name)
+        metadata = fetch_metadata(
+            table.dataset, table.table_name, project_id=table.project_id
+        )
 
         if metadata.used_count_fallback:
             session.add(
@@ -135,22 +137,20 @@ async def run_checks(
             frequency=table.frequency,
             today=today,
         )
-        inflow_threshold = (
-            table.inflow_drift_threshold_minutes
-            if table.inflow_drift_threshold_minutes is not None
-            else default_inflow
+        buffer_minutes = (
+            table.buffer_minutes
+            if table.buffer_minutes is not None
+            else default_buffer
         )
         result: CheckResult = evaluate(
             metadata,
             yesterday_row_count=baseline.row_count if baseline else None,
             delta_threshold_percent=threshold,
-            deadline_time=table.deadline_time,
+            batch_time=table.batch_time,
+            buffer_minutes=buffer_minutes,
             now=actual,
             cond_buffer_load=table.cond_buffer_load,
             cond_delta_rowcount=table.cond_delta_rowcount,
-            cond_inflow_time_drift=table.cond_inflow_time_drift,
-            inflow_drift_threshold_minutes=inflow_threshold,
-            baseline_last_modified=baseline.last_modified if baseline else None,
         )
 
         snapshot = CheckSnapshot(
@@ -165,6 +165,9 @@ async def run_checks(
         )
         session.add(snapshot)
         snapshots.append(snapshot)
+
+        if metadata.row_count is not None:
+            table.latest_etl_row_count = metadata.row_count
 
     await session.flush()
     return snapshots
