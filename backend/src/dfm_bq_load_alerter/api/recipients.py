@@ -110,7 +110,11 @@ async def update_recipient(
     return recipient
 
 
-@router.delete("/{recipient_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{recipient_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_recipient(
     recipient_id: int,
     session: AsyncSession = Depends(get_session),

@@ -15,6 +15,7 @@ from dfm_bq_load_alerter.api import (
     groups,
     health,
     history,
+    notifier,
     policy,
     recipients,
     tables,
@@ -98,6 +99,7 @@ app.include_router(groups.router)
 app.include_router(checks.router)
 app.include_router(history.router)
 app.include_router(policy.router)
+app.include_router(notifier.router)
 
 
 @app.get("/api/version")

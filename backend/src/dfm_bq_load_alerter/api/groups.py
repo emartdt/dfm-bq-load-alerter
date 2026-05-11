@@ -169,7 +169,11 @@ async def update_group(
     return await _build_group_out(session, group)
 
 
-@router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_group(
     group_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
