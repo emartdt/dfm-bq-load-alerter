@@ -64,6 +64,18 @@ spec:
             {{- end }}
           {{- end }}
           env:
+            {{- if .Values.proxy.http }}
+            - name: HTTP_PROXY
+              value: {{ .Values.proxy.http | quote }}
+            {{- end }}
+            {{- if .Values.proxy.https }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.proxy.https | quote }}
+            {{- end }}
+            {{- if .Values.proxy.no_proxy }}
+            - name: NO_PROXY
+              value: {{ .Values.proxy.no_proxy | quote }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
