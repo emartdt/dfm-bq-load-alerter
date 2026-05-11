@@ -1,3 +1,8 @@
+## 아키텍처
+- backend: fastapi
+- frontend: react
+- database: cloudSQL(pgsql)
+
 ## 요구사항 정리
 
 - 알람 시간
