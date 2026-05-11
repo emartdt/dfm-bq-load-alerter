@@ -65,7 +65,7 @@ export function PolicyPage() {
         default_buffer_minutes: Number(defaultBuffer),
       })
       setPolicy(updated)
-      setSavedNote(`saved at ${new Date(updated.updated_at).toLocaleString()}`)
+      setSavedNote(`${new Date(updated.updated_at).toLocaleString()}에 저장됨`)
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -74,36 +74,44 @@ export function PolicyPage() {
   }
 
   return (
-    <section className="tables-page">
-      <h2>Alert Policy</h2>
-      <p className="muted-cell">
-        시스템 전역 정책 (singleton). 변경 사항은 다음 cron 부터 적용된다.
-        check_times 변경은 Pod 재시작 후에 새 cron 으로 등록된다.
-      </p>
+    <section>
+      <header className="page-header">
+        <h1 className="page-title">알림 정책</h1>
+        <p className="page-subtitle">
+          시스템 전역 정책 (singleton). 변경은 다음 cron부터 적용되며, 점검 시간 변경은 Pod 재시작 후 새 cron으로 등록됩니다.
+        </p>
+      </header>
+
       {error && <p className="error">{error}</p>}
+
       {policy === null ? (
-        <p>loading…</p>
+        <p className="loading">불러오는 중…</p>
       ) : (
-        <form className="table-form" onSubmit={onSave}>
-          <div className="grid">
-            <label className="span-2">
-              Check times (KST, comma-separated HH:MM)
+        <form className="card" onSubmit={onSave}>
+          <h2 className="card-title">전역 정책</h2>
+          <div className="form-grid">
+            <label className="field span-2">
+              <span>
+                점검 시각 <span className="field-hint">KST, HH:MM 콤마 구분</span>
+              </span>
               <input
                 value={checkTimes}
                 onChange={(e) => setCheckTimes(e.target.value)}
                 placeholder="06:00, 07:00, 08:00, 08:20, 08:40, 09:00"
               />
             </label>
-            <label>
-              Report time (KST)
+            <label className="field">
+              <span>리포트 시각 (KST)</span>
               <input
                 type="time"
                 value={reportTime}
                 onChange={(e) => setReportTime(e.target.value)}
               />
             </label>
-            <label>
-              Default Δ% threshold
+            <label className="field">
+              <span>
+                기본 Δ% 임계치 <span className="field-hint">%</span>
+              </span>
               <input
                 type="number"
                 min={0}
@@ -113,8 +121,8 @@ export function PolicyPage() {
                 onChange={(e) => setDefaultThreshold(e.target.value)}
               />
             </label>
-            <label>
-              Retention days
+            <label className="field">
+              <span>이력 보관 일수</span>
               <input
                 type="number"
                 min={1}
@@ -123,8 +131,8 @@ export function PolicyPage() {
                 onChange={(e) => setRetentionDays(e.target.value)}
               />
             </label>
-            <label>
-              condition_query max bytes
+            <label className="field">
+              <span>condition_query 최대 바이트</span>
               <input
                 type="number"
                 min={1024}
@@ -132,18 +140,20 @@ export function PolicyPage() {
                 onChange={(e) => setConditionMaxBytes(e.target.value)}
               />
             </label>
-            <label>
-              Dedup strategy
+            <label className="field">
+              <span>중복 전송 전략</span>
               <select
                 value={dedupStrategy}
                 onChange={(e) => setDedupStrategy(e.target.value)}
               >
-                <option value="every-hour-resend">every-hour-resend</option>
-                <option value="state-change-only">state-change-only</option>
+                <option value="every-hour-resend">매 시간 재전송</option>
+                <option value="state-change-only">상태 변경 시만</option>
               </select>
             </label>
-            <label>
-              Default buffer (분)
+            <label className="field">
+              <span>
+                기본 버퍼 <span className="field-hint">분</span>
+              </span>
               <input
                 type="number"
                 min={1}
@@ -153,10 +163,12 @@ export function PolicyPage() {
               />
             </label>
           </div>
-          <button type="submit" disabled={busy}>
-            {busy ? 'Saving…' : 'Save'}
-          </button>
-          {savedNote && <p className="run-meta">{savedNote}</p>}
+          <div className="actions">
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? '저장 중…' : '저장'}
+            </button>
+            {savedNote && <span className="run-meta">{savedNote}</span>}
+          </div>
         </form>
       )}
     </section>

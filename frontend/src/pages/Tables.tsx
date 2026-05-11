@@ -26,6 +26,12 @@ const EMPTY_FORM: TableCreate = {
   active: true,
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  ok: '정상',
+  fail: '실패',
+  insufficient_history: '이력 부족',
+}
+
 function describeError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
@@ -84,7 +90,7 @@ export function Tables() {
   }
 
   const onDelete = async (id: number) => {
-    if (!window.confirm('Delete this table?')) return
+    if (!window.confirm('이 테이블을 삭제할까요?')) return
     setBusy(true)
     setError('')
     try {
@@ -111,15 +117,23 @@ export function Tables() {
   }
 
   return (
-    <section className="tables-page">
-      <h2>Tables</h2>
+    <section>
+      <header className="page-header">
+        <h1 className="page-title">테이블</h1>
+        <p className="page-subtitle">모니터링할 BigQuery 테이블과 배치 조건을 관리합니다.</p>
+      </header>
+
       {error && <p className="error">{error}</p>}
 
-      <form className="table-form" onSubmit={onCreate}>
-        <h3>Add table</h3>
-        <div className="grid">
-          <label>
-            Project ID (빈 값=환경 기본)
+      <form className="card" onSubmit={onCreate}>
+        <h2 className="card-title">테이블 추가</h2>
+        <p className="card-subtitle">데이터셋·테이블·배치 시간을 입력하면 다음 cron 부터 모니터링됩니다.</p>
+
+        <div className="form-grid">
+          <label className="field">
+            <span>
+              프로젝트 ID <span className="field-hint">(빈 값 = 환경 기본)</span>
+            </span>
             <input
               value={form.project_id ?? ''}
               onChange={(e) =>
@@ -131,8 +145,8 @@ export function Tables() {
               placeholder="emart-datafabric"
             />
           </label>
-          <label>
-            Dataset
+          <label className="field">
+            <span>데이터셋</span>
             <input
               required
               value={form.dataset}
@@ -140,8 +154,8 @@ export function Tables() {
               placeholder="bw"
             />
           </label>
-          <label>
-            Table name
+          <label className="field">
+            <span>테이블 이름</span>
             <input
               required
               value={form.table_name}
@@ -149,20 +163,20 @@ export function Tables() {
               placeholder="PZEVENTID"
             />
           </label>
-          <label>
-            Frequency
+          <label className="field">
+            <span>주기</span>
             <select
               value={form.frequency}
               onChange={(e) =>
                 setForm({ ...form, frequency: e.target.value as 'daily' | 'monthly' })
               }
             >
-              <option value="daily">daily</option>
-              <option value="monthly">monthly</option>
+              <option value="daily">일간</option>
+              <option value="monthly">월간</option>
             </select>
           </label>
-          <label>
-            Batch time (KST)
+          <label className="field">
+            <span>배치 시각 (KST)</span>
             <input
               type="time"
               required
@@ -170,8 +184,10 @@ export function Tables() {
               onChange={(e) => setForm({ ...form, batch_time: e.target.value })}
             />
           </label>
-          <label>
-            Buffer (분; 빈 값=정책 기본)
+          <label className="field">
+            <span>
+              버퍼 (분) <span className="field-hint">빈 값 = 정책 기본</span>
+            </span>
             <input
               type="number"
               min={1}
@@ -183,12 +199,12 @@ export function Tables() {
                   buffer_minutes: e.target.value === '' ? null : Number(e.target.value),
                 })
               }
-              placeholder="default 30"
+              placeholder="기본 30"
             />
           </label>
           {form.frequency === 'monthly' && (
-            <label>
-              Batch day of month
+            <label className="field">
+              <span>월 배치일</span>
               <input
                 type="number"
                 min={1}
@@ -203,8 +219,10 @@ export function Tables() {
               />
             </label>
           )}
-          <label>
-            Delta threshold %
+          <label className="field">
+            <span>
+              증감 임계치 <span className="field-hint">%</span>
+            </span>
             <input
               type="number"
               min={0}
@@ -218,18 +236,20 @@ export function Tables() {
                     e.target.value === '' ? null : Number(e.target.value),
                 })
               }
-              placeholder="default 25"
+              placeholder="기본 25"
             />
           </label>
-          <label className="span-2">
-            Note (운영 메모; 알림 본문에 노출)
+          <label className="field span-2">
+            <span>
+              메모 <span className="field-hint">운영 메모, 알림 본문에 노출</span>
+            </span>
             <input
               value={form.note ?? ''}
               onChange={(e) => setForm({ ...form, note: e.target.value })}
               placeholder="월말 결산 BW · ETL 작업자: data-platform"
             />
           </label>
-          <fieldset className="span-2 cond-toggles">
+          <fieldset className="cond-toggles span-2">
             <legend>알람 조건 (OR)</legend>
             <label className="inline">
               <input
@@ -239,7 +259,7 @@ export function Tables() {
                   setForm({ ...form, cond_buffer_load: e.target.checked })
                 }
               />
-              버퍼 시간 내 적재 + ROW COUNT=0
+              버퍼 시간 내 적재 + ROW COUNT = 0
             </label>
             <label className="inline">
               <input
@@ -253,14 +273,19 @@ export function Tables() {
             </label>
           </fieldset>
         </div>
-        <button type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Add'}
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? '저장 중…' : '추가'}
         </button>
       </form>
 
       <div className="actions">
-        <button type="button" onClick={() => void onRunNow()} disabled={busy}>
-          Run now (all)
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => void onRunNow()}
+          disabled={busy}
+        >
+          전체 즉시 실행
         </button>
         <label className="notify-toggle">
           <input
@@ -268,11 +293,11 @@ export function Tables() {
             checked={notify}
             onChange={(e) => setNotify(e.target.checked)}
           />
-          Send alerts (이메일 + Teams)
+          알림 전송 (이메일 + Teams)
         </label>
         {lastRun && (
           <span className="run-meta">
-            sent_events={lastRun.sent_events} (notified={String(lastRun.notified)})
+            전송 이벤트 {lastRun.sent_events}건 · 알림 {lastRun.notified ? '발송' : '미발송'}
           </span>
         )}
       </div>
@@ -280,40 +305,40 @@ export function Tables() {
       <table className="grid-table">
         <thead>
           <tr>
-            <th>Project</th>
-            <th>Dataset</th>
-            <th>Table</th>
-            <th>Freq</th>
-            <th>Batch</th>
-            <th>Buffer(분)</th>
-            <th>DOM</th>
+            <th>프로젝트</th>
+            <th>데이터셋</th>
+            <th>테이블</th>
+            <th>주기</th>
+            <th>배치</th>
+            <th>버퍼(분)</th>
+            <th>월일</th>
             <th>Δ%</th>
             <th>최근 ETL row count</th>
-            <th>Note</th>
-            <th>Active</th>
-            <th>Actions</th>
+            <th>메모</th>
+            <th>활성</th>
+            <th>작업</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
               <td colSpan={12} className="empty">
-                no tables registered
+                등록된 테이블이 없습니다.
               </td>
             </tr>
           )}
           {rows.map((r) => (
             <tr key={r.id}>
               <td className="muted-cell" title={r.project_id ?? ''}>
-                {r.project_id ?? '(default)'}
+                {r.project_id ?? '(기본)'}
               </td>
               <td>{r.dataset}</td>
               <td>{r.table_name}</td>
-              <td>{r.frequency}</td>
+              <td>{r.frequency === 'daily' ? '일간' : '월간'}</td>
               <td>{r.batch_time}</td>
-              <td>{r.buffer_minutes ?? '(default)'}</td>
+              <td>{r.buffer_minutes ?? '(기본)'}</td>
               <td>{r.batch_day_of_month ?? ''}</td>
-              <td>{r.delta_threshold_percent ?? '(default)'}</td>
+              <td>{r.delta_threshold_percent ?? '(기본)'}</td>
               <td className="numeric-cell">
                 {r.latest_etl_row_count === null
                   ? '—'
@@ -324,12 +349,22 @@ export function Tables() {
               </td>
               <td>{r.active ? '✓' : ''}</td>
               <td>
-                <button onClick={() => void onRunNow(r.id)} disabled={busy}>
-                  Run
-                </button>
-                <button onClick={() => void onDelete(r.id)} disabled={busy}>
-                  Delete
-                </button>
+                <div className="btn-row">
+                  <button
+                    className="btn btn-secondary btn-small"
+                    onClick={() => void onRunNow(r.id)}
+                    disabled={busy}
+                  >
+                    실행
+                  </button>
+                  <button
+                    className="btn btn-danger btn-small"
+                    onClick={() => void onDelete(r.id)}
+                    disabled={busy}
+                  >
+                    삭제
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -338,19 +373,21 @@ export function Tables() {
 
       {lastRun && (
         <section className="run-result">
-          <h3>Last run @ {new Date(lastRun.triggered_at).toLocaleString()}</h3>
-          <p>{lastRun.snapshot_count} snapshot(s)</p>
+          <h3>최근 실행 — {new Date(lastRun.triggered_at).toLocaleString()}</h3>
+          <p className="run-meta">스냅샷 {lastRun.snapshot_count}건</p>
           <ul>
             {lastRun.snapshots.map((s, i) => (
               <li key={i}>
-                table_id={s.table_id} · status=
-                <span className={`status status-${s.status}`}>{s.status}</span>
+                table_id={s.table_id} · 상태=
+                <span className={`status status-${s.status}`}>
+                  {STATUS_LABEL[s.status] ?? s.status}
+                </span>
                 {s.row_count !== null && <> · rows={s.row_count.toLocaleString()}</>}
                 {s.delta_percent_vs_yesterday !== null && (
                   <> · Δ={s.delta_percent_vs_yesterday}%</>
                 )}
                 {s.failure_reasons.length > 0 && (
-                  <> · reasons=[{s.failure_reasons.join(', ')}]</>
+                  <> · 사유=[{s.failure_reasons.join(', ')}]</>
                 )}
               </li>
             ))}

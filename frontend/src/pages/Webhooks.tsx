@@ -81,7 +81,7 @@ export function Webhooks() {
   }
 
   const onDelete = async (id: number) => {
-    if (!window.confirm('Delete this webhook?')) return
+    if (!window.confirm('이 웹훅을 삭제할까요?')) return
     setBusy(true)
     setError('')
     try {
@@ -109,15 +109,19 @@ export function Webhooks() {
   }
 
   return (
-    <section className="tables-page">
-      <h2>Teams Webhooks</h2>
+    <section>
+      <header className="page-header">
+        <h1 className="page-title">Teams 웹훅</h1>
+        <p className="page-subtitle">Microsoft Teams 채널로 알림을 보낼 incoming webhook URL을 등록합니다.</p>
+      </header>
+
       {error && <p className="error">{error}</p>}
 
-      <form className="table-form" onSubmit={onCreate}>
-        <h3>Add webhook</h3>
-        <div className="grid">
-          <label>
-            Name
+      <form className="card" onSubmit={onCreate}>
+        <h2 className="card-title">웹훅 추가</h2>
+        <div className="form-grid">
+          <label className="field">
+            <span>이름</span>
             <input
               required
               value={form.name}
@@ -125,8 +129,8 @@ export function Webhooks() {
               placeholder="ops-room"
             />
           </label>
-          <label>
-            Webhook URL
+          <label className="field span-2">
+            <span>웹훅 URL</span>
             <input
               required
               type="url"
@@ -135,36 +139,36 @@ export function Webhooks() {
               placeholder="https://outlook.office.com/webhook/..."
             />
           </label>
-          <label>
-            Active
+          <label className="field">
+            <span>활성 여부</span>
             <select
               value={form.active ? 'true' : 'false'}
               onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}
             >
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <option value="true">활성</option>
+              <option value="false">비활성</option>
             </select>
           </label>
         </div>
-        <button type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Add'}
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? '저장 중…' : '추가'}
         </button>
       </form>
 
       <table className="grid-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>URL (masked)</th>
-            <th>Active</th>
-            <th>Actions</th>
+            <th>이름</th>
+            <th>URL (마스킹)</th>
+            <th>활성</th>
+            <th>작업</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
               <td colSpan={4} className="empty">
-                no webhooks registered
+                등록된 웹훅이 없습니다.
               </td>
             </tr>
           )}
@@ -174,15 +178,29 @@ export function Webhooks() {
               <td className="muted-cell">{r.webhook_url_masked || '—'}</td>
               <td>{r.active ? '✓' : ''}</td>
               <td>
-                <button onClick={() => void onTest(r.id)} disabled={busy}>
-                  Test
-                </button>
-                <button onClick={() => void onToggleActive(r)} disabled={busy}>
-                  {r.active ? 'Deactivate' : 'Activate'}
-                </button>
-                <button onClick={() => void onDelete(r.id)} disabled={busy}>
-                  Delete
-                </button>
+                <div className="btn-row">
+                  <button
+                    className="btn btn-secondary btn-small"
+                    onClick={() => void onTest(r.id)}
+                    disabled={busy}
+                  >
+                    테스트
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-small"
+                    onClick={() => void onToggleActive(r)}
+                    disabled={busy}
+                  >
+                    {r.active ? '비활성화' : '활성화'}
+                  </button>
+                  <button
+                    className="btn btn-danger btn-small"
+                    onClick={() => void onDelete(r.id)}
+                    disabled={busy}
+                  >
+                    삭제
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -190,9 +208,8 @@ export function Webhooks() {
       </table>
 
       {testResult && (
-        <p className={`run-meta ${testResult.result.ok ? 'status-ok' : 'status-fail'}`}>
-          test webhook id={testResult.id} → {testResult.result.ok ? 'OK' : 'FAILED'} ·{' '}
-          {testResult.result.detail}
+        <p className={`run-meta status status-${testResult.result.ok ? 'ok' : 'fail'}`}>
+          웹훅 #{testResult.id} → {testResult.result.ok ? '성공' : '실패'} · {testResult.result.detail}
         </p>
       )}
     </section>

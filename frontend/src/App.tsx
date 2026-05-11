@@ -13,10 +13,12 @@ import { Webhooks } from './pages/Webhooks'
 
 function Layout() {
   return (
-    <main>
+    <>
       <Header />
-      <Outlet />
-    </main>
+      <div className="page">
+        <Outlet />
+      </div>
+    </>
   )
 }
 
