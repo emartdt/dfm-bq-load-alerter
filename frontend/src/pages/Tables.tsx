@@ -92,6 +92,7 @@ export function Tables() {
   const [rows, setRows] = useState<TableRow[]>([])
   const [form, setForm] = useState<TableCreate>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
   const [notify, setNotify] = useState<boolean>(false)
@@ -197,16 +198,37 @@ export function Tables() {
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!isFormOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFormOpen(false)
+        setEditingId(null)
+        setForm(EMPTY_FORM)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isFormOpen])
+
   const resetForm = () => {
     setForm(EMPTY_FORM)
     setEditingId(null)
+    setIsFormOpen(false)
+  }
+
+  const onAdd = () => {
+    setForm(EMPTY_FORM)
+    setEditingId(null)
+    setError('')
+    setIsFormOpen(true)
   }
 
   const onEdit = (row: TableRow) => {
     setForm(rowToForm(row))
     setEditingId(row.id)
     setError('')
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setIsFormOpen(true)
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -301,14 +323,45 @@ export function Tables() {
 
   return (
     <section>
-      <header className="page-header">
-        <h1 className="page-title">테이블</h1>
-        <p className="page-subtitle">모니터링할 BigQuery 테이블과 배치 조건을 관리합니다.</p>
+      <header className="page-header-row">
+        <div className="page-header-text">
+          <h1 className="page-title">테이블</h1>
+          <p className="page-subtitle">
+            모니터링할 BigQuery 테이블과 배치 조건을 관리합니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onAdd}
+          disabled={busy}
+        >
+          + 테이블 추가
+        </button>
       </header>
 
       {error && <p className="error">{error}</p>}
 
-      <form className="card" onSubmit={onSubmit} ref={formRef}>
+      {isFormOpen && (
+      <div
+        className="modal-overlay"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) resetForm()
+        }}
+      >
+      <form
+        className="card modal-card"
+        onSubmit={onSubmit}
+        ref={formRef}
+      >
+        <button
+          type="button"
+          className="modal-close"
+          onClick={resetForm}
+          aria-label="닫기"
+        >
+          ×
+        </button>
         <h2 className="card-title">
           {isEditing ? `테이블 수정 · ${form.dataset}.${form.table_name}` : '테이블 추가'}
         </h2>
@@ -478,18 +531,18 @@ export function Tables() {
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? '저장 중…' : isEditing ? '저장' : '추가'}
           </button>
-          {isEditing && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={resetForm}
-              disabled={busy}
-            >
-              취소
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={resetForm}
+            disabled={busy}
+          >
+            취소
+          </button>
         </div>
       </form>
+      </div>
+      )}
 
       <div className="actions">
         <button
@@ -635,7 +688,11 @@ export function Tables() {
             </tr>
           )}
           {pagedRows.map((r) => (
-            <tr key={r.id} className={editingId === r.id ? 'selected-row' : undefined}>
+            <tr
+              key={r.id}
+              className={`row-clickable${editingId === r.id ? ' selected-row' : ''}`}
+              onClick={() => onEdit(r)}
+            >
               <td className="muted-cell" title={r.project_id ?? ''}>
                 {r.project_id ?? '(기본)'}
               </td>
@@ -660,7 +717,7 @@ export function Tables() {
                 {r.note && r.note.length > 24 ? `${r.note.slice(0, 24)}…` : r.note ?? ''}
               </td>
               <td>{r.active ? '✓' : ''}</td>
-              <td>
+              <td onClick={(e) => e.stopPropagation()}>
                 <div className="btn-row">
                   <button
                     className="btn btn-secondary btn-small"
