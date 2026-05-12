@@ -21,7 +21,6 @@ export function PolicyPage() {
   const [reportTime, setReportTime] = useState<string>('07:45')
   const [defaultThreshold, setDefaultThreshold] = useState<string>('25')
   const [retentionDays, setRetentionDays] = useState<string>('90')
-  const [dedupStrategy, setDedupStrategy] = useState<string>('every-hour-resend')
   const [defaultBuffer, setDefaultBuffer] = useState<string>('30')
 
   const refresh = useCallback(async () => {
@@ -33,7 +32,6 @@ export function PolicyPage() {
       setReportTime(p.report_time.slice(0, 5))
       setDefaultThreshold(String(p.default_threshold_percent))
       setRetentionDays(String(p.retention_days))
-      setDedupStrategy(p.dedup_strategy)
       setDefaultBuffer(String(p.default_buffer_minutes))
     } catch (err) {
       setError(describeError(err))
@@ -58,7 +56,6 @@ export function PolicyPage() {
         report_time: reportTime,
         default_threshold_percent: Number(defaultThreshold),
         retention_days: Number(retentionDays),
-        dedup_strategy: dedupStrategy,
         default_buffer_minutes: Number(defaultBuffer),
       })
       setPolicy(updated)
@@ -87,7 +84,7 @@ export function PolicyPage() {
         <form className="card" onSubmit={onSave}>
           <h2 className="card-title">전역 정책</h2>
           <div className="form-grid">
-            <label className="field span-2">
+            <label className="field span-all">
               <span>
                 점검 시각 <span className="field-hint">KST, HH:MM 콤마 구분</span>
               </span>
@@ -127,33 +124,6 @@ export function PolicyPage() {
                 value={retentionDays}
                 onChange={(e) => setRetentionDays(e.target.value)}
               />
-            </label>
-            <label className="field">
-              <span>
-                중복 전송 전략{' '}
-                <span className="info-tip" tabIndex={0}>
-                  <span className="info-icon" aria-hidden="true">ⓘ</span>
-                  <span className="info-tip-body" role="tooltip">
-                    <strong>FAIL 알림 재전송 방식</strong>
-                    <ul>
-                      <li>
-                        <code>매 시간 재전송</code> — 직전 점검과 상태가 같아도 FAIL이면 매 점검마다 다시 전송합니다. 누락은 줄지만 알림 수가 많아집니다.
-                      </li>
-                      <li>
-                        <code>상태 변경 시만</code> — 직전 점검 대비 상태(성공↔실패)가 바뀌었을 때만 전송하도록 의도된 옵션입니다. 노이즈는 줄지만 지속 실패에 대한 환기가 줄어듭니다.
-                      </li>
-                    </ul>
-                    <em>* 현재 버전에서는 두 옵션이 동일하게 동작합니다 (백엔드에 분기 미구현).</em>
-                  </span>
-                </span>
-              </span>
-              <select
-                value={dedupStrategy}
-                onChange={(e) => setDedupStrategy(e.target.value)}
-              >
-                <option value="every-hour-resend">매 시간 재전송</option>
-                <option value="state-change-only">상태 변경 시만</option>
-              </select>
             </label>
             <label className="field">
               <span>

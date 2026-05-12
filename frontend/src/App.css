@@ -224,6 +224,7 @@ p { margin: 0 0 var(--sp-sm); }
   margin-bottom: var(--sp-lg);
 }
 .form-grid .span-2 { grid-column: span 2; }
+.form-grid .span-all { grid-column: 1 / -1; }
 
 .field {
   display: flex;
