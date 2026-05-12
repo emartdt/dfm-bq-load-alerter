@@ -22,7 +22,7 @@ from dfm_bq_load_alerter.api import (
 )
 from dfm_bq_load_alerter.auth.routes import router as auth_router
 from dfm_bq_load_alerter.db.session import dispose_engine, session_factory
-from dfm_bq_load_alerter.scheduler import Leader, build_scheduler, register_jobs
+from dfm_bq_load_alerter.scheduler import Leader, build_scheduler, register_dynamic_jobs
 from dfm_bq_load_alerter.settings import settings
 
 logging.basicConfig(level=settings.log_level)
@@ -42,7 +42,7 @@ async def lifespan(_app: FastAPI):
             nonlocal scheduler
             if scheduler is None or not scheduler.running:
                 scheduler = build_scheduler()
-                register_jobs(scheduler)
+                await register_dynamic_jobs(scheduler)
                 scheduler.start()
                 log.info("scheduler started (leader)")
 

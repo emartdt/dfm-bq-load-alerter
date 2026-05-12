@@ -72,7 +72,7 @@ export function PolicyPage() {
       <header className="page-header">
         <h1 className="page-title">알림 정책</h1>
         <p className="page-subtitle">
-          시스템 전역 정책 (singleton). 변경은 다음 cron부터 적용되며, 점검 시간 변경은 Pod 재시작 후 새 cron으로 등록됩니다.
+          시스템 전역 정책 (singleton). 점검 시각·리포트 시각 변경은 약 30초 이내에 스케줄러에 자동 반영됩니다.
         </p>
       </header>
 
