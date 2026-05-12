@@ -40,11 +40,11 @@ const SNAPSHOT_STATUS_HELP: Array<{ label: string; desc: string }> = [
   { label: 'ok', desc: '활성화된 모든 체크 통과 (정상 적재).' },
   {
     label: 'fail',
-    desc: '실패 사유 발견 — window 내 미적재 / row_count=0 / 전일 대비 증감 임계치 초과 등 (사유 컬럼 참고).',
+    desc: '실패 사유 발견 — window 내 미적재 / row_count=0 / 전일 대비 증감률 임계치 초과 등 (사유 컬럼 참고).',
   },
   {
     label: 'insufficient_history',
-    desc: '전일 대비 증감 체크가 켜져 있으나 비교할 어제 row_count 이력이 없어 판정 보류 (다른 실패가 없을 때만 부여, 이력이 쌓이면 자연 해소).',
+    desc: '전일 대비 증감률 체크가 켜져 있으나 비교할 어제 row_count 이력이 없어 판정 보류 (다른 실패가 없을 때만 부여, 이력이 쌓이면 자연 해소).',
   },
 ]
 
@@ -185,7 +185,7 @@ export function History() {
                 </th>
                 <th>사유</th>
                 <th>금일 rows</th>
-                <th>Δ%</th>
+                <th>증감률</th>
               </tr>
             </thead>
             <tbody>

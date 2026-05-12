@@ -397,7 +397,7 @@ export function Tables() {
           )}
           <label className="field">
             <span>
-              증감 임계치 <span className="field-hint">%</span>
+              증감률 임계치 <span className="field-hint">%</span>
             </span>
             <input
               type="number"
@@ -455,7 +455,7 @@ export function Tables() {
                   setForm({ ...form, cond_delta_rowcount: e.target.checked })
                 }
               />
-              전일/전월 row count 비교 (Δ%)
+              전일/전월 row count 비교 (증감률)
             </label>
           </fieldset>
         </div>
@@ -583,7 +583,7 @@ export function Tables() {
               월일{sortIndicator('batch_day_of_month')}
             </th>
             <th className="sortable" onClick={() => toggleSort('delta_threshold_percent')}>
-              Δ%{sortIndicator('delta_threshold_percent')}
+              증감률{sortIndicator('delta_threshold_percent')}
             </th>
             <th className="sortable" onClick={() => toggleSort('latest_etl_row_count')}>
               최근 ETL row count{sortIndicator('latest_etl_row_count')}
@@ -727,7 +727,7 @@ export function Tables() {
                 </span>
                 {s.row_count !== null && <> · rows={s.row_count.toLocaleString()}</>}
                 {s.delta_percent_vs_yesterday !== null && (
-                  <> · Δ={s.delta_percent_vs_yesterday}%</>
+                  <> · 증감률={s.delta_percent_vs_yesterday}%</>
                 )}
                 {s.failure_reasons.length > 0 && (
                   <> · 사유=[{s.failure_reasons.join(', ')}]</>

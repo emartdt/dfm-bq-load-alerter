@@ -107,7 +107,7 @@ export function PolicyPage() {
             </label>
             <label className="field">
               <span>
-                기본 Δ% 임계치 <span className="field-hint">%</span>
+                기본 증감률 임계치 <span className="field-hint">%</span>
               </span>
               <input
                 type="number"
@@ -129,7 +129,24 @@ export function PolicyPage() {
               />
             </label>
             <label className="field">
-              <span>중복 전송 전략</span>
+              <span>
+                중복 전송 전략{' '}
+                <span className="info-tip" tabIndex={0}>
+                  <span className="info-icon" aria-hidden="true">ⓘ</span>
+                  <span className="info-tip-body" role="tooltip">
+                    <strong>FAIL 알림 재전송 방식</strong>
+                    <ul>
+                      <li>
+                        <code>매 시간 재전송</code> — 직전 점검과 상태가 같아도 FAIL이면 매 점검마다 다시 전송합니다. 누락은 줄지만 알림 수가 많아집니다.
+                      </li>
+                      <li>
+                        <code>상태 변경 시만</code> — 직전 점검 대비 상태(성공↔실패)가 바뀌었을 때만 전송하도록 의도된 옵션입니다. 노이즈는 줄지만 지속 실패에 대한 환기가 줄어듭니다.
+                      </li>
+                    </ul>
+                    <em>* 현재 버전에서는 두 옵션이 동일하게 동작합니다 (백엔드에 분기 미구현).</em>
+                  </span>
+                </span>
+              </span>
               <select
                 value={dedupStrategy}
                 onChange={(e) => setDedupStrategy(e.target.value)}
