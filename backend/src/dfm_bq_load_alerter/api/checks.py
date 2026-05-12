@@ -54,7 +54,11 @@ async def run_now(
     table_id: Annotated[int | None, Query(ge=1)] = None,
     notify: Annotated[bool, Query()] = False,
 ) -> RunNowResponse:
-    """Trigger checks immediately. Single-flight via PG advisory lock (rev 2 P5).
+    """Trigger checks immediately. Single-flight via PG advisory xact lock.
+
+    Uses a transaction-scoped advisory lock so the lock is auto-released on
+    COMMIT or ROLLBACK — a crash mid-run cannot leave a stale session-level
+    lock pinned to a pooled connection. (rev 2 P5)
 
     `notify=true` additionally bundles the resulting snapshots into the
     configured channels (email + Teams) using the `check` trigger semantics —
@@ -62,11 +66,12 @@ async def run_now(
     """
     lock_acquired = (
         await session.execute(
-            text("SELECT pg_try_advisory_lock(:k)"),
+            text("SELECT pg_try_advisory_xact_lock(:k)"),
             {"k": _RUN_NOW_LOCK_KEY},
         )
     ).scalar_one()
     if not lock_acquired:
+        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Another run-now is already in progress.",
@@ -89,12 +94,9 @@ async def run_now(
                 actual=now,
             )
         await session.commit()
-    finally:
-        await session.execute(
-            text("SELECT pg_advisory_unlock(:k)"),
-            {"k": _RUN_NOW_LOCK_KEY},
-        )
-        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
 
     return RunNowResponse(
         triggered_at=datetime.now(tz=KST),
@@ -134,11 +136,12 @@ async def report_now(
     """
     lock_acquired = (
         await session.execute(
-            text("SELECT pg_try_advisory_lock(:k)"),
+            text("SELECT pg_try_advisory_xact_lock(:k)"),
             {"k": _REPORT_NOW_LOCK_KEY},
         )
     ).scalar_one()
     if not lock_acquired:
+        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Another report-now is already in progress.",
@@ -161,12 +164,9 @@ async def report_now(
             actual=now,
         )
         await session.commit()
-    finally:
-        await session.execute(
-            text("SELECT pg_advisory_unlock(:k)"),
-            {"k": _REPORT_NOW_LOCK_KEY},
-        )
-        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
 
     return RunNowResponse(
         triggered_at=datetime.now(tz=KST),

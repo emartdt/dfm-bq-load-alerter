@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dfm_bq_load_alerter.auth import require_admin
 from dfm_bq_load_alerter.db.models import AlertRecipient
 from dfm_bq_load_alerter.db.session import get_session
+from dfm_bq_load_alerter.notifier.email import (
+    EmailNotConfiguredError,
+    send_email,
+)
 
 router = APIRouter(prefix="/api/recipients", tags=["recipients"])
 
@@ -125,3 +129,38 @@ async def delete_recipient(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     await session.delete(recipient)
     await session.commit()
+
+
+class RecipientTestResult(BaseModel):
+    ok: bool
+    detail: str
+
+
+@router.post("/{recipient_id}/test", response_model=RecipientTestResult)
+async def test_recipient(
+    recipient_id: int,
+    session: AsyncSession = Depends(get_session),
+    _principal: dict = Depends(require_admin),
+) -> RecipientTestResult:
+    """등록된 수신자 이메일로 테스트 메일을 1회 송신해 연결 상태를 확인."""
+    recipient = await session.get(AlertRecipient, recipient_id)
+    if recipient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    subject = "[DFM Alert] 수신자 연결 테스트"
+    html = (
+        "<!DOCTYPE html><html lang=\"ko\"><body "
+        "style=\"font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;\">"
+        "<h2 style=\"margin-bottom:0.25rem;\">[DFM Alert] 수신자 연결 테스트</h2>"
+        f"<p style=\"color:#888;margin-top:0;\">recipient={recipient.email} · {now_iso}</p>"
+        "<p>이 메일은 DFM BQ Load Alerter 수신자 등록 검증용으로 발송되었습니다.</p>"
+        "<hr><p style=\"font-size:12px;color:#888;\">dfm-bq-load-alerter</p>"
+        "</body></html>"
+    )
+    try:
+        await send_email(to=[recipient.email], subject=subject, html=html)
+    except EmailNotConfiguredError as exc:
+        return RecipientTestResult(ok=False, detail=f"SMTP not configured: {exc}")
+    except Exception as exc:  # noqa: BLE001 — report transport-level failure to UI
+        return RecipientTestResult(ok=False, detail=f"{type(exc).__name__}: {exc}")
+    return RecipientTestResult(ok=True, detail="sent")

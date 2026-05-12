@@ -172,6 +172,54 @@ p { margin: 0 0 var(--sp-sm); }
 }
 
 .page-header { margin-bottom: var(--sp-xl); }
+.page-header-row {
+  margin-bottom: var(--sp-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-md);
+}
+.page-header-row > .page-header-text { flex: 1 1 auto; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 17, 21, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--sp-xl) var(--sp-lg);
+  overflow-y: auto;
+  z-index: 1000;
+}
+.modal-card {
+  position: relative;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--r-lg);
+  padding: var(--sp-xl);
+  width: 100%;
+  max-width: 960px;
+  margin: auto;
+  box-shadow: 0 18px 48px rgba(15, 17, 21, 0.18);
+}
+.modal-close {
+  position: absolute;
+  top: var(--sp-md);
+  right: var(--sp-md);
+  background: transparent;
+  border: 0;
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--color-ink-muted-48);
+  border-radius: var(--r-sm);
+}
+.modal-close:hover { color: var(--color-ink); background: rgba(0, 0, 0, 0.04); }
+.row-clickable { cursor: pointer; }
+.row-clickable:hover { background: rgba(0, 102, 204, 0.04); }
 .page-title {
   font-family: var(--font-display);
   font-size: 40px;
@@ -224,6 +272,7 @@ p { margin: 0 0 var(--sp-sm); }
   margin-bottom: var(--sp-lg);
 }
 .form-grid .span-2 { grid-column: span 2; }
+.form-grid .span-all { grid-column: 1 / -1; }
 
 .field {
   display: flex;
@@ -712,12 +761,14 @@ p { margin: 0 0 var(--sp-sm); }
 }
 .login-title {
   font-family: var(--font-display);
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.2;
   letter-spacing: -0.28px;
   color: var(--color-ink);
   margin: 0 0 var(--sp-md);
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 .login-lead {
   font-family: var(--font-display);
@@ -727,6 +778,8 @@ p { margin: 0 0 var(--sp-sm); }
   letter-spacing: 0.231px;
   color: var(--color-ink-muted-80);
   margin: 0 0 var(--sp-xl);
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 /* Loader placeholder */

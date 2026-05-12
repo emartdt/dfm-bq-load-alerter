@@ -21,8 +21,6 @@ export function PolicyPage() {
   const [reportTime, setReportTime] = useState<string>('07:45')
   const [defaultThreshold, setDefaultThreshold] = useState<string>('25')
   const [retentionDays, setRetentionDays] = useState<string>('90')
-  const [conditionMaxBytes, setConditionMaxBytes] = useState<string>('104857600')
-  const [dedupStrategy, setDedupStrategy] = useState<string>('every-hour-resend')
   const [defaultBuffer, setDefaultBuffer] = useState<string>('30')
 
   const refresh = useCallback(async () => {
@@ -34,8 +32,6 @@ export function PolicyPage() {
       setReportTime(p.report_time.slice(0, 5))
       setDefaultThreshold(String(p.default_threshold_percent))
       setRetentionDays(String(p.retention_days))
-      setConditionMaxBytes(String(p.condition_query_max_bytes))
-      setDedupStrategy(p.dedup_strategy)
       setDefaultBuffer(String(p.default_buffer_minutes))
     } catch (err) {
       setError(describeError(err))
@@ -60,8 +56,6 @@ export function PolicyPage() {
         report_time: reportTime,
         default_threshold_percent: Number(defaultThreshold),
         retention_days: Number(retentionDays),
-        condition_query_max_bytes: Number(conditionMaxBytes),
-        dedup_strategy: dedupStrategy,
         default_buffer_minutes: Number(defaultBuffer),
       })
       setPolicy(updated)
@@ -78,7 +72,7 @@ export function PolicyPage() {
       <header className="page-header">
         <h1 className="page-title">알림 정책</h1>
         <p className="page-subtitle">
-          시스템 전역 정책 (singleton). 변경은 다음 cron부터 적용되며, 점검 시간 변경은 Pod 재시작 후 새 cron으로 등록됩니다.
+          시스템 전역 정책 (singleton). 점검 시각·리포트 시각 변경은 약 30초 이내에 스케줄러에 자동 반영됩니다.
         </p>
       </header>
 
@@ -90,7 +84,7 @@ export function PolicyPage() {
         <form className="card" onSubmit={onSave}>
           <h2 className="card-title">전역 정책</h2>
           <div className="form-grid">
-            <label className="field span-2">
+            <label className="field span-all">
               <span>
                 점검 시각 <span className="field-hint">KST, HH:MM 콤마 구분</span>
               </span>
@@ -110,7 +104,7 @@ export function PolicyPage() {
             </label>
             <label className="field">
               <span>
-                기본 Δ% 임계치 <span className="field-hint">%</span>
+                기본 증감률 임계치 <span className="field-hint">%</span>
               </span>
               <input
                 type="number"
@@ -130,25 +124,6 @@ export function PolicyPage() {
                 value={retentionDays}
                 onChange={(e) => setRetentionDays(e.target.value)}
               />
-            </label>
-            <label className="field">
-              <span>condition_query 최대 바이트</span>
-              <input
-                type="number"
-                min={1024}
-                value={conditionMaxBytes}
-                onChange={(e) => setConditionMaxBytes(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>중복 전송 전략</span>
-              <select
-                value={dedupStrategy}
-                onChange={(e) => setDedupStrategy(e.target.value)}
-              >
-                <option value="every-hour-resend">매 시간 재전송</option>
-                <option value="state-change-only">상태 변경 시만</option>
-              </select>
             </label>
             <label className="field">
               <span>

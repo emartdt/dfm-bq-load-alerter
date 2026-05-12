@@ -21,6 +21,11 @@ export interface RecipientPatch {
   active?: boolean
 }
 
+export interface RecipientTestResult {
+  ok: boolean
+  detail: string
+}
+
 export async function listRecipients(): Promise<Recipient[]> {
   const { data } = await api.get<Recipient[]>('/api/recipients')
   return data
@@ -38,4 +43,9 @@ export async function updateRecipient(id: number, payload: RecipientPatch): Prom
 
 export async function deleteRecipient(id: number): Promise<void> {
   await api.delete(`/api/recipients/${id}`)
+}
+
+export async function testRecipient(id: number): Promise<RecipientTestResult> {
+  const { data } = await api.post<RecipientTestResult>(`/api/recipients/${id}/test`)
+  return data
 }

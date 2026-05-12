@@ -48,10 +48,12 @@ class Settings(BaseSettings):
     retention_days: int = Field(default=90)
     scheduler_timezone: str = Field(default="Asia/Seoul")
     scheduler_enabled: bool = Field(default=True)
+    leader_election_enabled: bool = Field(default=True)
     leader_ping_seconds: int = Field(default=30, ge=5, le=300)
     misfire_grace_check_seconds: int = Field(default=120)
     misfire_grace_report_seconds: int = Field(default=600)
     condition_query_max_bytes: int = Field(default=104857600)
+    bq_max_concurrency: int = Field(default=5, ge=1, le=64)
 
     @property
     def bq_datasets(self) -> list[str]:

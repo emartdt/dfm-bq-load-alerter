@@ -5,6 +5,7 @@ import {
   createTable,
   deleteTable,
   listTables,
+  reportNow,
   runNow,
   updateTable,
   type RunNowResponse,
@@ -48,6 +49,7 @@ type SortKey =
   | 'batch_day_of_month'
   | 'delta_threshold_percent'
   | 'latest_etl_row_count'
+  | 'latest_etl_datetime'
   | 'note'
   | 'active'
 type SortDir = 'asc' | 'desc'
@@ -90,6 +92,7 @@ export function Tables() {
   const [rows, setRows] = useState<TableRow[]>([])
   const [form, setForm] = useState<TableCreate>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
   const [notify, setNotify] = useState<boolean>(false)
@@ -195,16 +198,37 @@ export function Tables() {
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!isFormOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFormOpen(false)
+        setEditingId(null)
+        setForm(EMPTY_FORM)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isFormOpen])
+
   const resetForm = () => {
     setForm(EMPTY_FORM)
     setEditingId(null)
+    setIsFormOpen(false)
+  }
+
+  const onAdd = () => {
+    setForm(EMPTY_FORM)
+    setEditingId(null)
+    setError('')
+    setIsFormOpen(true)
   }
 
   const onEdit = (row: TableRow) => {
     setForm(rowToForm(row))
     setEditingId(row.id)
     setError('')
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setIsFormOpen(true)
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -282,18 +306,62 @@ export function Tables() {
     }
   }
 
+  const onReportNow = async () => {
+    setBusy(true)
+    setError('')
+    setLastRun(null)
+    try {
+      setLastRun(await reportNow())
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const isEditing = editingId !== null
 
   return (
     <section>
-      <header className="page-header">
-        <h1 className="page-title">테이블</h1>
-        <p className="page-subtitle">모니터링할 BigQuery 테이블과 배치 조건을 관리합니다.</p>
+      <header className="page-header-row">
+        <div className="page-header-text">
+          <h1 className="page-title">테이블</h1>
+          <p className="page-subtitle">
+            모니터링할 BigQuery 테이블과 배치 조건을 관리합니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onAdd}
+          disabled={busy}
+        >
+          + 테이블 추가
+        </button>
       </header>
 
       {error && <p className="error">{error}</p>}
 
-      <form className="card" onSubmit={onSubmit} ref={formRef}>
+      {isFormOpen && (
+      <div
+        className="modal-overlay"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) resetForm()
+        }}
+      >
+      <form
+        className="card modal-card"
+        onSubmit={onSubmit}
+        ref={formRef}
+      >
+        <button
+          type="button"
+          className="modal-close"
+          onClick={resetForm}
+          aria-label="닫기"
+        >
+          ×
+        </button>
         <h2 className="card-title">
           {isEditing ? `테이블 수정 · ${form.dataset}.${form.table_name}` : '테이블 추가'}
         </h2>
@@ -397,7 +465,7 @@ export function Tables() {
           )}
           <label className="field">
             <span>
-              증감 임계치 <span className="field-hint">%</span>
+              증감률 임계치 <span className="field-hint">%</span>
             </span>
             <input
               type="number"
@@ -455,7 +523,7 @@ export function Tables() {
                   setForm({ ...form, cond_delta_rowcount: e.target.checked })
                 }
               />
-              전일/전월 row count 비교 (Δ%)
+              전일/전월 row count 비교 (증감률)
             </label>
           </fieldset>
         </div>
@@ -463,18 +531,18 @@ export function Tables() {
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? '저장 중…' : isEditing ? '저장' : '추가'}
           </button>
-          {isEditing && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={resetForm}
-              disabled={busy}
-            >
-              취소
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={resetForm}
+            disabled={busy}
+          >
+            취소
+          </button>
         </div>
       </form>
+      </div>
+      )}
 
       <div className="actions">
         <button
@@ -484,6 +552,15 @@ export function Tables() {
           disabled={busy}
         >
           전체 즉시 실행
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => void onReportNow()}
+          disabled={busy}
+          title="07:45 일일 리포트와 동일하게 모든 활성 테이블에 대해 점검 후 이메일/Teams 발송"
+        >
+          지금 리포트 발송
         </button>
         <label className="notify-toggle">
           <input
@@ -583,10 +660,13 @@ export function Tables() {
               월일{sortIndicator('batch_day_of_month')}
             </th>
             <th className="sortable" onClick={() => toggleSort('delta_threshold_percent')}>
-              Δ%{sortIndicator('delta_threshold_percent')}
+              증감률{sortIndicator('delta_threshold_percent')}
             </th>
             <th className="sortable" onClick={() => toggleSort('latest_etl_row_count')}>
               최근 ETL row count{sortIndicator('latest_etl_row_count')}
+            </th>
+            <th className="sortable" onClick={() => toggleSort('latest_etl_datetime')}>
+              최근 ETL 시각{sortIndicator('latest_etl_datetime')}
             </th>
             <th className="sortable" onClick={() => toggleSort('note')}>
               메모{sortIndicator('note')}
@@ -600,7 +680,7 @@ export function Tables() {
         <tbody>
           {pagedRows.length === 0 && (
             <tr>
-              <td colSpan={12} className="empty">
+              <td colSpan={13} className="empty">
                 {rows.length === 0
                   ? '등록된 테이블이 없습니다.'
                   : '필터 조건과 일치하는 테이블이 없습니다.'}
@@ -608,7 +688,11 @@ export function Tables() {
             </tr>
           )}
           {pagedRows.map((r) => (
-            <tr key={r.id} className={editingId === r.id ? 'selected-row' : undefined}>
+            <tr
+              key={r.id}
+              className={`row-clickable${editingId === r.id ? ' selected-row' : ''}`}
+              onClick={() => onEdit(r)}
+            >
               <td className="muted-cell" title={r.project_id ?? ''}>
                 {r.project_id ?? '(기본)'}
               </td>
@@ -624,11 +708,16 @@ export function Tables() {
                   ? '—'
                   : r.latest_etl_row_count.toLocaleString()}
               </td>
+              <td className="muted-cell">
+                {r.latest_etl_datetime === null
+                  ? '—'
+                  : new Date(r.latest_etl_datetime).toLocaleString()}
+              </td>
               <td className="muted-cell" title={r.note ?? ''}>
                 {r.note && r.note.length > 24 ? `${r.note.slice(0, 24)}…` : r.note ?? ''}
               </td>
               <td>{r.active ? '✓' : ''}</td>
-              <td>
+              <td onClick={(e) => e.stopPropagation()}>
                 <div className="btn-row">
                   <button
                     className="btn btn-secondary btn-small"
@@ -727,7 +816,7 @@ export function Tables() {
                 </span>
                 {s.row_count !== null && <> · rows={s.row_count.toLocaleString()}</>}
                 {s.delta_percent_vs_yesterday !== null && (
-                  <> · Δ={s.delta_percent_vs_yesterday}%</>
+                  <> · 증감률={s.delta_percent_vs_yesterday}%</>
                 )}
                 {s.failure_reasons.length > 0 && (
                   <> · 사유=[{s.failure_reasons.join(', ')}]</>
