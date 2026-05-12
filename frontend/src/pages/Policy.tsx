@@ -21,7 +21,6 @@ export function PolicyPage() {
   const [reportTime, setReportTime] = useState<string>('07:45')
   const [defaultThreshold, setDefaultThreshold] = useState<string>('25')
   const [retentionDays, setRetentionDays] = useState<string>('90')
-  const [conditionMaxBytes, setConditionMaxBytes] = useState<string>('104857600')
   const [dedupStrategy, setDedupStrategy] = useState<string>('every-hour-resend')
   const [defaultBuffer, setDefaultBuffer] = useState<string>('30')
 
@@ -34,7 +33,6 @@ export function PolicyPage() {
       setReportTime(p.report_time.slice(0, 5))
       setDefaultThreshold(String(p.default_threshold_percent))
       setRetentionDays(String(p.retention_days))
-      setConditionMaxBytes(String(p.condition_query_max_bytes))
       setDedupStrategy(p.dedup_strategy)
       setDefaultBuffer(String(p.default_buffer_minutes))
     } catch (err) {
@@ -60,7 +58,6 @@ export function PolicyPage() {
         report_time: reportTime,
         default_threshold_percent: Number(defaultThreshold),
         retention_days: Number(retentionDays),
-        condition_query_max_bytes: Number(conditionMaxBytes),
         dedup_strategy: dedupStrategy,
         default_buffer_minutes: Number(defaultBuffer),
       })
@@ -129,15 +126,6 @@ export function PolicyPage() {
                 max={3650}
                 value={retentionDays}
                 onChange={(e) => setRetentionDays(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>condition_query 최대 바이트</span>
-              <input
-                type="number"
-                min={1024}
-                value={conditionMaxBytes}
-                onChange={(e) => setConditionMaxBytes(e.target.value)}
               />
             </label>
             <label className="field">
