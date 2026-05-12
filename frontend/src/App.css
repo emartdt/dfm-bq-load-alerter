@@ -712,12 +712,14 @@ p { margin: 0 0 var(--sp-sm); }
 }
 .login-title {
   font-family: var(--font-display);
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.2;
   letter-spacing: -0.28px;
   color: var(--color-ink);
   margin: 0 0 var(--sp-md);
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 .login-lead {
   font-family: var(--font-display);
@@ -727,6 +729,8 @@ p { margin: 0 0 var(--sp-sm); }
   letter-spacing: 0.231px;
   color: var(--color-ink-muted-80);
   margin: 0 0 var(--sp-xl);
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 /* Loader placeholder */
