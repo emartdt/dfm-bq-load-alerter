@@ -5,9 +5,11 @@ import {
   createRecipient,
   deleteRecipient,
   listRecipients,
+  testRecipient,
   updateRecipient,
   type Recipient,
   type RecipientCreate,
+  type RecipientTestResult,
 } from '../api/recipients'
 
 const EMPTY_FORM: RecipientCreate = {
@@ -29,6 +31,9 @@ export function Recipients() {
   const [form, setForm] = useState<RecipientCreate>(EMPTY_FORM)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
+  const [testResult, setTestResult] = useState<{ id: number; result: RecipientTestResult } | null>(
+    null,
+  )
 
   const refresh = useCallback(async () => {
     setError('')
@@ -82,6 +87,20 @@ export function Recipients() {
     try {
       await deleteRecipient(id)
       await refresh()
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onTest = async (id: number) => {
+    setBusy(true)
+    setError('')
+    setTestResult(null)
+    try {
+      const result = await testRecipient(id)
+      setTestResult({ id, result })
     } catch (err) {
       setError(describeError(err))
     } finally {
@@ -164,6 +183,13 @@ export function Recipients() {
                 <div className="btn-row">
                   <button
                     className="btn btn-secondary btn-small"
+                    onClick={() => void onTest(r.id)}
+                    disabled={busy}
+                  >
+                    테스트
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-small"
                     onClick={() => void onToggleActive(r)}
                     disabled={busy}
                   >
@@ -183,6 +209,12 @@ export function Recipients() {
         </tbody>
       </table>
       </div>
+
+      {testResult && (
+        <p className={`run-meta status status-${testResult.result.ok ? 'ok' : 'fail'}`}>
+          수신자 #{testResult.id} → {testResult.result.ok ? '성공' : '실패'} · {testResult.result.detail}
+        </p>
+      )}
     </section>
   )
 }
