@@ -1,6 +1,6 @@
 [project]
 name = "dfm-bq-load-alerter"
-version = "0.6.1"
+version = "0.7.0"
 description = "DFM BigQuery 적재 작업 모니터링 및 알림"
 requires-python = "~=3.13"
 license = { text = "Proprietary" }
