@@ -67,6 +67,7 @@ class TableOut(BaseModel):
     cond_delta_rowcount: bool
     active: bool
     latest_etl_row_count: int | None
+    latest_etl_datetime: datetime | None
     created_at: datetime
     updated_at: datetime
 

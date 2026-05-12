@@ -37,8 +37,8 @@ def test_cond_buffer_load_off_suppresses_buffer_failures() -> None:
         now=now,
         cond_buffer_load=False,
     )
-    assert "missing_last_modified" not in result.failure_reasons
-    assert "row_count_zero" not in result.failure_reasons
+    assert "최종 업데이트 시각 없음" not in result.failure_reasons
+    assert "row count 0" not in result.failure_reasons
 
 
 def test_cond_delta_off_suppresses_delta_failures() -> None:
@@ -64,8 +64,8 @@ def test_cond_delta_off_suppresses_delta_failures() -> None:
         now=now,
         cond_delta_rowcount=False,
     )
-    assert any("delta_exceeded" in r for r in result_on.failure_reasons)
-    assert all("delta_exceeded" not in r for r in result_off.failure_reasons)
+    assert any("증감률 임계치 초과" in r for r in result_on.failure_reasons)
+    assert all("증감률 임계치 초과" not in r for r in result_off.failure_reasons)
 
 
 def test_previous_month_window_calculates_first_to_first_of_month() -> None:

@@ -5,6 +5,7 @@ import {
   createTable,
   deleteTable,
   listTables,
+  reportNow,
   runNow,
   updateTable,
   type RunNowResponse,
@@ -48,6 +49,7 @@ type SortKey =
   | 'batch_day_of_month'
   | 'delta_threshold_percent'
   | 'latest_etl_row_count'
+  | 'latest_etl_datetime'
   | 'note'
   | 'active'
 type SortDir = 'asc' | 'desc'
@@ -282,6 +284,19 @@ export function Tables() {
     }
   }
 
+  const onReportNow = async () => {
+    setBusy(true)
+    setError('')
+    setLastRun(null)
+    try {
+      setLastRun(await reportNow())
+    } catch (err) {
+      setError(describeError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const isEditing = editingId !== null
 
   return (
@@ -485,6 +500,15 @@ export function Tables() {
         >
           전체 즉시 실행
         </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => void onReportNow()}
+          disabled={busy}
+          title="07:45 일일 리포트와 동일하게 모든 활성 테이블에 대해 점검 후 이메일/Teams 발송"
+        >
+          지금 리포트 발송
+        </button>
         <label className="notify-toggle">
           <input
             type="checkbox"
@@ -588,6 +612,9 @@ export function Tables() {
             <th className="sortable" onClick={() => toggleSort('latest_etl_row_count')}>
               최근 ETL row count{sortIndicator('latest_etl_row_count')}
             </th>
+            <th className="sortable" onClick={() => toggleSort('latest_etl_datetime')}>
+              최근 ETL 시각{sortIndicator('latest_etl_datetime')}
+            </th>
             <th className="sortable" onClick={() => toggleSort('note')}>
               메모{sortIndicator('note')}
             </th>
@@ -600,7 +627,7 @@ export function Tables() {
         <tbody>
           {pagedRows.length === 0 && (
             <tr>
-              <td colSpan={12} className="empty">
+              <td colSpan={13} className="empty">
                 {rows.length === 0
                   ? '등록된 테이블이 없습니다.'
                   : '필터 조건과 일치하는 테이블이 없습니다.'}
@@ -623,6 +650,11 @@ export function Tables() {
                 {r.latest_etl_row_count === null
                   ? '—'
                   : r.latest_etl_row_count.toLocaleString()}
+              </td>
+              <td className="muted-cell">
+                {r.latest_etl_datetime === null
+                  ? '—'
+                  : new Date(r.latest_etl_datetime).toLocaleString()}
               </td>
               <td className="muted-cell" title={r.note ?? ''}>
                 {r.note && r.note.length > 24 ? `${r.note.slice(0, 24)}…` : r.note ?? ''}

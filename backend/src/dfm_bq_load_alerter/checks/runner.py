@@ -200,7 +200,7 @@ async def run_checks(
                 last_modified=None,
                 status=CheckStatus.fail,
                 failure_reasons=[
-                    f"bq_fetch_error: {type(metadata).__name__}: {metadata}"
+                    f"BigQuery 호출 실패: {type(metadata).__name__}: {metadata}"
                 ],
                 delta_percent_vs_yesterday=None,
             )
@@ -259,6 +259,8 @@ async def run_checks(
 
         if metadata.row_count is not None:
             table.latest_etl_row_count = metadata.row_count
+        if metadata.last_modified is not None:
+            table.latest_etl_datetime = metadata.last_modified
 
     await session.flush()
     return snapshots

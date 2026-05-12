@@ -190,6 +190,15 @@ class Table(Base):
             "조회 실패/미수행 시에는 갱신하지 않는다 (이전 값 유지)."
         ),
     )
+    latest_etl_datetime: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment=(
+            "최근 체크에서 관측된 BigQuery 테이블의 최종 수정 시각. "
+            "체크 실행 시 metadata.last_modified 로 갱신되며, "
+            "조회 실패/미수행 시에는 갱신하지 않는다 (이전 값 유지)."
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

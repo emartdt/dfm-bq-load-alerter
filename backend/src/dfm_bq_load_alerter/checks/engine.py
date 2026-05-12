@@ -88,16 +88,16 @@ def evaluate(
 
     if cond_buffer_load:
         if metadata.last_modified is None and not in_buffer:
-            reasons.append("missing_last_modified")
+            reasons.append("최종 업데이트 시각 없음")
         elif (
             metadata.last_modified is not None
             and metadata.last_modified.astimezone(KST).date() != today
             and not in_buffer
         ):
-            reasons.append("not_updated_today_kst")
+            reasons.append("오늘 미적재")
 
         if metadata.row_count == 0:
-            reasons.append("row_count_zero")
+            reasons.append("row count 0")
 
     delta_percent: float | None = None
     if cond_delta_rowcount:
@@ -110,7 +110,7 @@ def evaluate(
             delta_percent = (delta / yesterday_row_count) * 100.0
             if delta_percent >= delta_threshold_percent:
                 reasons.append(
-                    f"delta_exceeded:{delta_percent:.2f}%>="
+                    f"증감률 임계치 초과: {delta_percent:.2f}% >= "
                     f"{delta_threshold_percent:.2f}%"
                 )
         elif (
@@ -120,8 +120,8 @@ def evaluate(
         ):
             delta_percent = float("inf")
             reasons.append(
-                f"delta_exceeded:from_zero_to_{metadata.row_count}>="
-                f"{delta_threshold_percent:.2f}%"
+                f"0 → {metadata.row_count} 급증 "
+                f"(임계치 {delta_threshold_percent:.2f}%)"
             )
 
     # INSUFFICIENT_HISTORY only when delta path was the only thing missing
@@ -133,7 +133,7 @@ def evaluate(
     ):
         return CheckResult(
             status=CheckStatus.insufficient_history,
-            failure_reasons=[],
+            failure_reasons=["비교 기준 없음"],
             delta_percent_vs_yesterday=None,
         )
 

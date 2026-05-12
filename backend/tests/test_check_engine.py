@@ -59,7 +59,7 @@ def test_fail_when_not_updated_today() -> None:
             delta_threshold_percent=25.0,
         )
     assert result.status == CheckStatus.fail
-    assert "not_updated_today_kst" in result.failure_reasons
+    assert "오늘 미적재" in result.failure_reasons
 
 
 def test_fail_when_row_count_zero() -> None:
@@ -73,7 +73,7 @@ def test_fail_when_row_count_zero() -> None:
             delta_threshold_percent=25.0,
         )
     assert result.status == CheckStatus.fail
-    assert "row_count_zero" in result.failure_reasons
+    assert "row count 0" in result.failure_reasons
 
 
 def test_fail_when_delta_exceeds_threshold() -> None:
@@ -87,7 +87,7 @@ def test_fail_when_delta_exceeds_threshold() -> None:
             delta_threshold_percent=25.0,
         )
     assert result.status == CheckStatus.fail
-    assert any(r.startswith("delta_exceeded") for r in result.failure_reasons)
+    assert any(r.startswith("증감률 임계치 초과") for r in result.failure_reasons)
     assert result.delta_percent_vs_yesterday == 60.0
 
 
@@ -102,7 +102,7 @@ def test_insufficient_history_when_no_yesterday_and_otherwise_ok() -> None:
             delta_threshold_percent=25.0,
         )
     assert result.status == CheckStatus.insufficient_history
-    assert result.failure_reasons == []
+    assert result.failure_reasons == ["비교 기준 없음"]
 
 
 def test_fail_overrides_insufficient_history_when_other_reasons_exist() -> None:
@@ -116,7 +116,7 @@ def test_fail_overrides_insufficient_history_when_other_reasons_exist() -> None:
             delta_threshold_percent=25.0,
         )
     assert result.status == CheckStatus.fail
-    assert "not_updated_today_kst" in result.failure_reasons
+    assert "오늘 미적재" in result.failure_reasons
 
 
 def test_monthly_skip_outside_batch_day() -> None:

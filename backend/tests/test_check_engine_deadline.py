@@ -38,7 +38,7 @@ def test_pre_window_end_with_no_load_does_not_fail() -> None:
         now=now,
     )
     assert result.status == CheckStatus.ok
-    assert "missing_last_modified" not in result.failure_reasons
+    assert "최종 업데이트 시각 없음" not in result.failure_reasons
 
 
 def test_post_window_end_with_no_load_fails() -> None:
@@ -54,7 +54,7 @@ def test_post_window_end_with_no_load_fails() -> None:
         now=now,
     )
     assert result.status == CheckStatus.fail
-    assert "missing_last_modified" in result.failure_reasons
+    assert "최종 업데이트 시각 없음" in result.failure_reasons
 
 
 def test_pre_window_end_with_yesterday_last_modified_is_not_a_fail() -> None:
@@ -71,7 +71,7 @@ def test_pre_window_end_with_yesterday_last_modified_is_not_a_fail() -> None:
         buffer_minutes=BUFFER_MINUTES,
         now=now,
     )
-    assert "not_updated_today_kst" not in result.failure_reasons
+    assert "오늘 미적재" not in result.failure_reasons
 
 
 def test_row_count_zero_is_a_fail_even_in_buffer() -> None:
@@ -88,4 +88,4 @@ def test_row_count_zero_is_a_fail_even_in_buffer() -> None:
         now=now,
     )
     assert result.status == CheckStatus.fail
-    assert "row_count_zero" in result.failure_reasons
+    assert "row count 0" in result.failure_reasons

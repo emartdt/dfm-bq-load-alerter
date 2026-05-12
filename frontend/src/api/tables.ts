@@ -18,6 +18,7 @@ export interface TableRow {
   cond_delta_rowcount: boolean
   active: boolean
   latest_etl_row_count: number | null
+  latest_etl_datetime: string | null
   created_at: string
   updated_at: string
 }
@@ -95,5 +96,10 @@ export async function runNow(tableId?: number, notify = false): Promise<RunNowRe
   if (tableId !== undefined) params.table_id = tableId
   if (notify) params.notify = true
   const { data } = await api.post<RunNowResponse>('/api/checks/run-now', null, { params })
+  return data
+}
+
+export async function reportNow(): Promise<RunNowResponse> {
+  const { data } = await api.post<RunNowResponse>('/api/checks/report-now')
   return data
 }
