@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dfm_bq_load_alerter.bq.metadata import fetch_metadata
+from dfm_bq_load_alerter.bq.metadata import TableMetadata, fetch_metadata
 from dfm_bq_load_alerter.checks.engine import (
     CheckResult,
     evaluate,
@@ -74,6 +76,77 @@ async def _baseline_snapshot(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def _fetch_metadatas_parallel(
+    tables: list[Table],
+) -> list[TableMetadata | BaseException]:
+    """Call BigQuery `fetch_metadata` for each table concurrently.
+
+    `fetch_metadata` is a blocking SDK call, so each request runs in a
+    worker thread. The semaphore caps concurrent in-flight requests at
+    `settings.bq_max_concurrency` to keep API quota usage predictable.
+
+    Per-table BigQuery failures are captured (not re-raised) so a single
+    table — e.g. one with an empty `project_id` producing
+    `BadRequest: ProjectId must be non-empty` — does not abort the whole
+    cron cycle. The caller turns each captured exception into a FAIL
+    snapshot with `bq_fetch_error: …` in `failure_reasons`.
+    """
+    if not tables:
+        return []
+    sem = asyncio.Semaphore(settings.bq_max_concurrency)
+    targets = ", ".join(f"{t.dataset}.{t.table_name}" for t in tables)
+    log.info(
+        "bq fetch start: tables=%d concurrency=%d targets=[%s]",
+        len(tables),
+        settings.bq_max_concurrency,
+        targets,
+    )
+    cycle_started = time.perf_counter()
+    ok_count = 0
+    fail_count = 0
+
+    async def _one(table: Table) -> TableMetadata:
+        nonlocal ok_count, fail_count
+        label = f"{table.dataset}.{table.table_name}"
+        started = time.perf_counter()
+        async with sem:
+            try:
+                meta = await asyncio.to_thread(
+                    fetch_metadata,
+                    table.dataset,
+                    table.table_name,
+                    project_id=table.project_id,
+                )
+            except Exception:
+                fail_count += 1
+                elapsed = time.perf_counter() - started
+                log.exception(
+                    "bq fetch fail: %s took=%.2fs", label, elapsed
+                )
+                raise
+        ok_count += 1
+        elapsed = time.perf_counter() - started
+        rows = meta.row_count if meta.row_count is not None else "?"
+        log.info(
+            "bq fetch ok: %s rows=%s took=%.2fs", label, rows, elapsed
+        )
+        return meta
+
+    try:
+        return await asyncio.gather(
+            *(_one(t) for t in tables), return_exceptions=True
+        )
+    finally:
+        elapsed = time.perf_counter() - cycle_started
+        log.info(
+            "bq fetch done: ok=%d fail=%d total=%d elapsed=%.2fs",
+            ok_count,
+            fail_count,
+            len(tables),
+            elapsed,
+        )
+
+
 async def run_checks(
     session: AsyncSession,
     *,
@@ -101,7 +174,7 @@ async def run_checks(
         stmt = stmt.where(Table.id.in_(table_ids))
     tables = (await session.execute(stmt)).scalars().all()
 
-    snapshots: list[CheckSnapshot] = []
+    eligible: list[Table] = []
     for table in tables:
         if is_skip_for_monthly(table.frequency, table.batch_day_of_month, today):
             log.info(
@@ -112,10 +185,28 @@ async def run_checks(
                 table.batch_day_of_month,
             )
             continue
+        eligible.append(table)
 
-        metadata = fetch_metadata(
-            table.dataset, table.table_name, project_id=table.project_id
-        )
+    metadatas = await _fetch_metadatas_parallel(eligible)
+
+    snapshots: list[CheckSnapshot] = []
+    for table, metadata in zip(eligible, metadatas, strict=True):
+        if isinstance(metadata, BaseException):
+            snapshot = CheckSnapshot(
+                table_id=table.id,
+                checked_at=actual,
+                expected_check_time=expected,
+                row_count=None,
+                last_modified=None,
+                status=CheckStatus.fail,
+                failure_reasons=[
+                    f"bq_fetch_error: {type(metadata).__name__}: {metadata}"
+                ],
+                delta_percent_vs_yesterday=None,
+            )
+            session.add(snapshot)
+            snapshots.append(snapshot)
+            continue
 
         if metadata.used_count_fallback:
             session.add(

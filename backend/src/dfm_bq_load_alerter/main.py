@@ -35,30 +35,59 @@ async def lifespan(_app: FastAPI):
     scheduler: AsyncIOScheduler | None = None
     heartbeat_task: asyncio.Task[None] | None = None
 
+    log.info(
+        "boot: env=%s log_level=%s tz=%s scheduler_enabled=%s postgres_dsn=%s "
+        "leader_election=%s leader_ping=%ds",
+        settings.environment,
+        settings.log_level,
+        settings.scheduler_timezone,
+        settings.scheduler_enabled,
+        "set" if settings.postgres_dsn else "unset",
+        settings.leader_election_enabled,
+        settings.leader_ping_seconds,
+    )
+
     if settings.scheduler_enabled and settings.postgres_dsn:
-        leader = Leader(session_factory(), ping_seconds=settings.leader_ping_seconds)
+        if settings.leader_election_enabled:
+            leader = Leader(session_factory(), ping_seconds=settings.leader_ping_seconds)
 
-        async def on_acquired() -> None:
-            nonlocal scheduler
-            if scheduler is None or not scheduler.running:
-                scheduler = build_scheduler()
-                await register_dynamic_jobs(scheduler)
-                scheduler.start()
-                log.info("scheduler started (leader)")
+            async def on_acquired() -> None:
+                nonlocal scheduler
+                if scheduler is None or not scheduler.running:
+                    scheduler = build_scheduler()
+                    await register_dynamic_jobs(scheduler)
+                    scheduler.start()
+                    log.info("scheduler started (leader)")
 
-        async def on_lost() -> None:
-            nonlocal scheduler
-            if scheduler is not None and scheduler.running:
-                scheduler.shutdown(wait=False)
-                log.warning("scheduler shutdown (lost leader)")
-            scheduler = None
+            async def on_lost() -> None:
+                nonlocal scheduler
+                if scheduler is not None and scheduler.running:
+                    scheduler.shutdown(wait=False)
+                    log.warning("scheduler shutdown (lost leader)")
+                scheduler = None
 
-        if await leader.try_acquire():
-            await on_acquired()
+            if await leader.try_acquire():
+                await on_acquired()
+            else:
+                log.info(
+                    "scheduler not started yet: leader lock not acquired (another pod holds it)"
+                )
 
-        heartbeat_task = asyncio.create_task(
-            leader.run_forever(on_acquired=on_acquired, on_lost=on_lost),
-            name="leader-heartbeat",
+            heartbeat_task = asyncio.create_task(
+                leader.run_forever(on_acquired=on_acquired, on_lost=on_lost),
+                name="leader-heartbeat",
+            )
+        else:
+            log.info("leader election disabled — running scheduler as single instance")
+            scheduler = build_scheduler()
+            await register_dynamic_jobs(scheduler)
+            scheduler.start()
+            log.info("scheduler started (single-instance)")
+    else:
+        log.warning(
+            "scheduler disabled at boot: scheduler_enabled=%s postgres_dsn=%s",
+            settings.scheduler_enabled,
+            "set" if settings.postgres_dsn else "unset",
         )
 
     try:
