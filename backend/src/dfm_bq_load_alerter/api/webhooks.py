@@ -18,6 +18,7 @@ from dfm_bq_load_alerter.auth import require_admin
 from dfm_bq_load_alerter.db.models import TeamsWebhook
 from dfm_bq_load_alerter.db.session import get_session
 from dfm_bq_load_alerter.notifier.teams import TeamsPostError, post_teams_card
+from dfm_bq_load_alerter.notifier.template import ALERT_SUBJECT_PREFIX
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -195,7 +196,7 @@ async def test_webhook(
                             "type": "TextBlock",
                             "size": "Large",
                             "weight": "Bolder",
-                            "text": "[DFM Alert] Webhook 연결 테스트",
+                            "text": f"{ALERT_SUBJECT_PREFIX} Webhook 연결 테스트",
                         },
                         {
                             "type": "TextBlock",

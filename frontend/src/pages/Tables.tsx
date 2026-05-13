@@ -93,6 +93,7 @@ export function Tables() {
   const [form, setForm] = useState<TableCreate>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false)
+  const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<boolean>(false)
   const [notify, setNotify] = useState<boolean>(false)
@@ -210,6 +211,15 @@ export function Tables() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [isFormOpen])
+
+  useEffect(() => {
+    if (!isHelpOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsHelpOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isHelpOpen])
 
   const resetForm = () => {
     setForm(EMPTY_FORM)
@@ -420,7 +430,10 @@ export function Tables() {
             </select>
           </label>
           <label className="field">
-            <span>배치 시각 (KST)</span>
+            <span>
+              배치 시각 (KST){' '}
+              <span className="field-hint">버퍼 조건 사용 시 필수</span>
+            </span>
             <input
               type="time"
               required
@@ -430,7 +443,10 @@ export function Tables() {
           </label>
           <label className="field">
             <span>
-              버퍼 (분) <span className="field-hint">빈 값 = 정책 기본</span>
+              버퍼 (분){' '}
+              <span className="field-hint">
+                윈도우 = [배치 − 버퍼, 배치 + 버퍼] · 빈 값 = 정책 기본
+              </span>
             </span>
             <input
               type="number"
@@ -514,6 +530,7 @@ export function Tables() {
                 }
               />
               버퍼 시간 내 적재 + ROW COUNT = 0
+              <span className="field-hint"> · 배치 시각 필수</span>
             </label>
             <label className="inline">
               <input
@@ -825,6 +842,166 @@ export function Tables() {
             ))}
           </ul>
         </section>
+      )}
+
+      <button
+        type="button"
+        className="fab-help"
+        onClick={() => setIsHelpOpen(true)}
+        aria-label="검증 로직 도움말 열기"
+        title="검증 로직 도움말"
+      >
+        ?
+      </button>
+
+      {isHelpOpen && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsHelpOpen(false)
+          }}
+        >
+          <div className="card modal-card help-modal" role="dialog" aria-modal="true">
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setIsHelpOpen(false)}
+              aria-label="닫기"
+            >
+              ×
+            </button>
+            <h2 className="card-title">검증 로직 안내</h2>
+            <p className="card-subtitle">
+              테이블이 정상적으로 적재되었는지 어떻게 판정하는지 설명합니다.
+            </p>
+
+            <div className="help-section">
+              <h3>1. 언제 검증하나요?</h3>
+              <p>스케줄러가 정해진 시각에 자동으로 모든 활성 테이블을 점검합니다.</p>
+              <ul>
+                <li>
+                  <strong>실패 알람</strong>: 06:00, 07:00, 그리고 08:00–09:00 사이에 20분 간격으로 실행
+                </li>
+                <li>
+                  <strong>일일 리포트</strong>: 매일 07:45에 모든 테이블의 결과를 한 번에 정리해 발송
+                </li>
+              </ul>
+              <p>알림 채널은 <strong>이메일</strong>과 <strong>Microsoft Teams</strong>입니다.</p>
+            </div>
+
+            <div className="help-section">
+              <h3>2. "버퍼 윈도우"가 무엇인가요?</h3>
+              <p>
+                배치는 항상 정시에 끝나지 않으므로, 배치 시각 앞뒤로 여유 시간(<strong>버퍼</strong>)을 두고
+                "이 시간 안에 적재되어야 정상"이라고 본 구간입니다.
+              </p>
+              <div className="help-example">
+                윈도우 = [배치 시각 − 버퍼, 배치 시각 + 버퍼]
+                <br />
+                예) 배치 05:00, 버퍼 30분 → 04:30 ~ 05:30 사이에 적재되어야 정상
+              </div>
+              <p>
+                테이블별로 <code>버퍼(분)</code>을 비워두면 정책 기본값(보통 30분)이 적용됩니다.
+              </p>
+            </div>
+
+            <div className="help-section">
+              <h3>3. 어떤 경우에 "실패"로 판정하나요?</h3>
+              <p>
+                아래 조건 중 <strong>하나라도</strong> 해당되면 FAIL 입니다 (OR 조건). 테이블별로
+                각 조건을 켜고 끌 수 있습니다.
+              </p>
+              <ul>
+                <li>
+                  <strong>적재 누락</strong>: 윈도우가 끝났는데 그 안에 적재된 흔적이 없음 →{' '}
+                  <code>윈도우 내 미적재</code>
+                </li>
+                <li>
+                  <strong>빈 적재</strong>: 윈도우 안에 적재는 됐는데 행 개수가 0 →{' '}
+                  <code>row count 0</code>
+                </li>
+                <li>
+                  <strong>증감률 초과</strong>: 어제(또는 전월) 대비 행 개수 변화율이 임계치를 넘음
+                  (기본 25%)
+                </li>
+              </ul>
+              <div className="help-callout">
+                <p>
+                  윈도우가 아직 끝나지 않은 시점에 검증이 돌면, 적재가 곧 도착할 가능성을 고려해
+                  성급하게 FAIL 처리하지 않습니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="help-section">
+              <h3>4. 증감률은 어떻게 계산하나요?</h3>
+              <p>
+                오늘 행 개수와 비교 기준(baseline)의 차이를 비율로 환산합니다.
+              </p>
+              <div className="help-example">
+                증감률 = | 오늘 행 개수 − 기준 행 개수 | ÷ 기준 행 개수 × 100 (%)
+              </div>
+              <ul>
+                <li>
+                  <strong>일간 테이블</strong>: 어제 같은 시점의 row count 와 비교
+                </li>
+                <li>
+                  <strong>월간 테이블</strong>: 전월 배치일의 row count 와 비교
+                </li>
+                <li>
+                  <strong>증가·감소 모두</strong> 임계치를 넘으면 FAIL (절대값 기준)
+                </li>
+                <li>
+                  기준이 0인데 오늘은 0보다 크면 <code>0 → N 급증</code>으로 별도 표기
+                </li>
+              </ul>
+              <div className="help-callout">
+                <p>
+                  임계치는 테이블별로 <code>증감률(%)</code>에 입력할 수 있고, 비워두면 정책 기본값이
+                  적용됩니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="help-section">
+              <h3>5. 비교할 어제 데이터가 없으면?</h3>
+              <p>
+                신규 등록 테이블처럼 어제(또는 전월) 스냅샷이 없으면 <strong>증감률 비교는 생략</strong>{' '}
+                되며, "이전 배치 기록 없음 - 증감률 비교 생략"이라는 안내가 남습니다. 이 자체는
+                FAIL 이 아닙니다.
+              </p>
+            </div>
+
+            <div className="help-section">
+              <h3>6. 월간 테이블은 매일 검증하지 않습니다</h3>
+              <p>
+                월간 테이블은 등록한 <code>월 배치일</code>(예: 매월 1일) 에만 점검합니다. 배치일이
+                아닌 날은 자동으로 건너뜁니다.
+              </p>
+            </div>
+
+            <div className="help-section">
+              <h3>7. 알림에 들어가는 정보</h3>
+              <ul>
+                <li>데이터셋 · 테이블명</li>
+                <li>배치 예상 시각, 검증 시각</li>
+                <li>전일(또는 전월) 적재 시각, 전일 row count</li>
+                <li>오늘 row count 와 증감률(%)</li>
+                <li>FAIL 사유와 안내 메모</li>
+              </ul>
+            </div>
+
+            <div className="btn-row" style={{ marginTop: 'var(--sp-lg)' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setIsHelpOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   )

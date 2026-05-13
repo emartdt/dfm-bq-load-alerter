@@ -14,9 +14,10 @@ state is unchanged across triggers — every check that finds FAIL sends.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from typing import Literal
 
 from sqlalchemy import select
@@ -42,8 +43,9 @@ from dfm_bq_load_alerter.notifier.teams import TeamsPostError, post_teams_card
 from dfm_bq_load_alerter.notifier.template import (
     TemplateRow,
     build_email_html,
-    build_teams_card,
+    build_teams_cards,
 )
+from dfm_bq_load_alerter.settings import settings
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +72,10 @@ class DispatchSnapshot:
     note: str | None = None
     today_last_modified: datetime | None = None
     yesterday_last_modified: datetime | None = None
+    project: str | None = None
+    batch_time: time | None = None
+    informational_notes: list[str] | None = None
+    buffer_minutes: int | None = None
 
 
 def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
@@ -86,6 +92,10 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
         note=s.note,
         today_last_modified=s.today_last_modified,
         yesterday_last_modified=s.yesterday_last_modified,
+        project=s.project,
+        batch_time=s.batch_time,
+        informational_notes=list(s.informational_notes or []),
+        buffer_minutes=s.buffer_minutes,
     )
 
 
@@ -157,7 +167,8 @@ async def dispatch(
     subject, html = build_email_html(
         trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
     )
-    teams_card = build_teams_card(
+    # Teams Webhook 페이로드 한계 회피를 위해 카드 N 분할 가능.
+    teams_cards = build_teams_cards(
         trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
     )
 
@@ -221,15 +232,29 @@ async def dispatch(
             )
             events_added += 1
             continue
+        chunk_total = len(teams_cards)
+        chunk_summary = (
+            f"{summary} · webhook={hook.name}"
+            + (f" · chunks={chunk_total}" if chunk_total > 1 else "")
+        )
         try:
-            await post_teams_card(webhook_url=url, payload=teams_card)
+            chunk_delay = settings.teams_chunk_delay_seconds
+            for idx, card in enumerate(teams_cards, start=1):
+                log.info(
+                    "teams chunk %d/%d webhook=%s", idx, chunk_total, hook.name
+                )
+                await post_teams_card(webhook_url=url, payload=card)
+                # 채팅창 정렬 보존 + Webhook throttle 회피용 sequential gap.
+                # 마지막 청크 이후엔 대기하지 않는다.
+                if idx < chunk_total and chunk_delay > 0:
+                    await asyncio.sleep(chunk_delay)
             await _persist_event(
                 session,
                 snapshot_id=snapshot_id,
                 trigger_kind=tk_enum,
                 channel=Channel.teams,
                 status=EventStatus.sent,
-                payload_summary=f"{summary} · webhook={hook.name}",
+                payload_summary=chunk_summary,
             )
         except TeamsPostError as exc:
             log.warning("teams webhook failed: %s", exc)
@@ -239,7 +264,7 @@ async def dispatch(
                 trigger_kind=tk_enum,
                 channel=Channel.teams,
                 status=EventStatus.failed,
-                payload_summary=f"{summary} · webhook={hook.name}",
+                payload_summary=chunk_summary,
                 error=str(exc),
             )
         events_added += 1
@@ -292,6 +317,14 @@ async def build_dispatch_snapshots(
     if not snapshots:
         return []
 
+    from dfm_bq_load_alerter.db.models import AlertPolicy
+    from dfm_bq_load_alerter.settings import settings
+
+    fallback_project = settings.bq_project_id or None
+
+    policy = await session.get(AlertPolicy, 1)
+    fallback_buffer = policy.default_buffer_minutes if policy is not None else 30
+
     table_ids = {s.table_id for s in snapshots}
     tables = (
         await session.execute(select(Table).where(Table.id.in_(table_ids)))
@@ -328,6 +361,14 @@ async def build_dispatch_snapshots(
                 note=table.note,
                 today_last_modified=s.last_modified,
                 yesterday_last_modified=yday.last_modified if yday else None,
+                project=table.project_id or fallback_project,
+                batch_time=table.batch_time,
+                informational_notes=list(s.informational_notes or []),
+                buffer_minutes=(
+                    table.buffer_minutes
+                    if table.buffer_minutes is not None
+                    else fallback_buffer
+                ),
             )
         )
     return result

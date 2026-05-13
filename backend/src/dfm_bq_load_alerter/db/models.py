@@ -111,13 +111,19 @@ class Table(Base):
     batch_time: Mapped[time] = mapped_column(
         Time,
         nullable=False,
-        comment="예정 적재 시각 (KST). 체크 슬롯 계산의 기준이 되는 시각.",
+        comment=(
+            "예정 적재 시각 (KST). 체크 윈도우의 중심값으로 사용. "
+            "cond_buffer_load=True 인 테이블은 이 값이 필수이며, "
+            "버퍼 윈도우 = [batch_time - buffer, batch_time + buffer]."
+        ),
     )
     buffer_minutes: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
         comment=(
-            "체크 윈도우 끝점을 batch_time + buffer_minutes 로 결정 (KST). "
+            "버퍼(분). 체크 윈도우 = [batch_time - buffer_minutes, "
+            "batch_time + buffer_minutes] (KST). 윈도우 안에서 적재되어야 정상, "
+            "윈도우 밖 적재/미적재는 FAIL. "
             "NULL → alert_policy.default_buffer_minutes 적용."
         ),
     )
@@ -154,7 +160,11 @@ class Table(Base):
         server_default="true",
         comment=(
             "버퍼 내 미적재/행 수 0 조건 활성화 여부. "
-            "true 이면 deadline 기반 미적재·row_count=0 조건을 평가, false 이면 해당 조건을 무시."
+            "true 이면 윈도우 [batch_time - buffer, batch_time + buffer] 기준으로 "
+            "윈도우 밖 적재/미적재를 FAIL 로 평가하며, row_count=0 은 "
+            "윈도우 안 적재가 있을 때만 추가 FAIL 사유로 평가됨. "
+            "true 일 때는 batch_time 이 필수값으로 사용되며 (schema 상 NOT NULL), "
+            "false 이면 해당 조건 전체를 무시."
         ),
     )
     cond_delta_rowcount: Mapped[bool] = mapped_column(
@@ -274,6 +284,17 @@ class CheckSnapshot(Base):
         default=list,
         server_default="[]",
         comment="실패 사유 코드 목록 (JSONB 배열). 예: ['not_loaded','row_count_zero'].",
+    )
+    informational_notes: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default="[]",
+        comment=(
+            "FAIL 판정과 무관한 운영 안내 메시지 목록 (JSONB 배열). "
+            "예: ['이전 배치 기록 없음 - 증감률 비교 생략']. 알람 템플릿에서 "
+            "failure_reasons(빨강) 과 시각적으로 구분 렌더된다."
+        ),
     )
     delta_percent_vs_yesterday: Mapped[float | None] = mapped_column(
         Numeric(8, 2),
@@ -576,7 +597,7 @@ class AlertPolicy(Base):
         server_default="30",
         comment=(
             "버퍼(분) 전역 기본값. 테이블별 buffer_minutes 가 NULL 일 때 적용. "
-            "체크 윈도우 끝점 = batch_time + 이 값."
+            "체크 윈도우 = [batch_time - 이 값, batch_time + 이 값]."
         ),
     )
     updated_at: Mapped[datetime] = mapped_column(

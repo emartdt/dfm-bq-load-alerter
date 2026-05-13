@@ -37,7 +37,7 @@ DFM_ALERT_BQ_PROJECT_ID=op://Shinsegae/dfm-dev-bq-load-alerter/bq_project_id
 #   docker run -d --rm --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
 #   수신함: http://localhost:8025
 # 실제 릴레이로 보내려면 host/port/user/password 를 사내 SMTP 값으로 교체.
-DFM_ALERT_SMTP_HOST=email.shinsegae.ai
+DFM_ALERT_SMTP_HOST=10.253.12.132
 DFM_ALERT_SMTP_PORT=25
 DFM_ALERT_SMTP_USE_STARTTLS=false
 DFM_ALERT_SMTP_FROM_ADDR=dfm-alert@shinsegae.ai

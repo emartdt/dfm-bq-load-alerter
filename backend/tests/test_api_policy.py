@@ -23,6 +23,9 @@ def test_history_router_registered() -> None:
     paths = {route.path for route in app.routes}  # type: ignore[attr-defined]
     assert "/api/history/snapshots" in paths
     assert "/api/history/events" in paths
+    assert "/api/history/stats/daily" in paths
+    assert "/api/history/stats/monthly" in paths
+    assert "/api/history/stats/table-success-rate" in paths
 
 
 def test_policy_router_registered() -> None:

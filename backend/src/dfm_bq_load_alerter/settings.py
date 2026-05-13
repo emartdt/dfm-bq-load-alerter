@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     misfire_grace_report_seconds: int = Field(default=600)
     condition_query_max_bytes: int = Field(default=104857600)
     bq_max_concurrency: int = Field(default=5, ge=1, le=64)
+    teams_chunk_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
 
     @property
     def bq_datasets(self) -> list[str]:

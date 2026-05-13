@@ -79,5 +79,32 @@ async def test_send_email_passes_local_hostname_when_set(monkeypatch) -> None:
     kwargs = sent.await_args.kwargs
     assert kwargs["local_hostname"] == "alerter.dfm.local"
     assert kwargs["start_tls"] is False
-    assert kwargs["username"] is None
-    assert kwargs["password"] is None
+    # 자격 증명이 비어 있으면 AUTH를 시도하지 않도록 키 자체를 전달하지 않음.
+    assert "username" not in kwargs
+    assert "password" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_send_email_skips_auth_when_only_user_set(monkeypatch) -> None:
+    """user만 채워지고 password가 비어 있으면 AUTH를 시도하지 않는다.
+
+    운영 환경에서 내부 릴레이(email.shinsegae.ai:25) 대상으로 user/password가
+    실수로 설정되었을 때 ``No suitable authentication method found.`` 가 발생
+    하던 회귀를 막기 위한 가드.
+    """
+    monkeypatch.setattr(email_module.settings, "smtp_host", "smtp.example.com", raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_port", 25, raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_user", "AE0E100028@example.com", raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_password", "", raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_from_addr", "alerts@dfm.local", raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_use_starttls", False, raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_local_hostname", "", raising=False)
+
+    sent = AsyncMock()
+    monkeypatch.setattr(email_module.aiosmtplib, "send", sent)
+
+    await send_email(to=["a@example.com"], subject="hi", html="<b>h</b>")
+
+    kwargs = sent.await_args.kwargs
+    assert "username" not in kwargs
+    assert "password" not in kwargs

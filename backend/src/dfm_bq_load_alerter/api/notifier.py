@@ -24,6 +24,7 @@ from dfm_bq_load_alerter.notifier.email import (
     send_email,
 )
 from dfm_bq_load_alerter.notifier.teams import TeamsPostError, post_teams_card
+from dfm_bq_load_alerter.notifier.template import ALERT_SUBJECT_PREFIX
 
 router = APIRouter(prefix="/api/notifier", tags=["notifier"])
 KST = ZoneInfo("Asia/Seoul")
@@ -64,14 +65,14 @@ class TestSendResponse(BaseModel):
 
 def _build_email_body(now: datetime, message: str | None) -> tuple[str, str]:
     ts = now.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"[DFM Alert] 채널 발송 테스트 ({ts} KST)"
+    subject = f"{ALERT_SUBJECT_PREFIX} 채널 발송 테스트 ({ts} KST)"
     note_html = (
         f'<p style="color:#444;">메모: {message}</p>' if message else ""
     )
     html = (
         '<!DOCTYPE html><html lang="ko"><body '
         'style="font-family:system-ui,-apple-system,\'Segoe UI\',sans-serif;color:#1a1a1a;">'
-        f'<h2>DFM Alert 채널 발송 테스트</h2>'
+        f'<h2>{ALERT_SUBJECT_PREFIX} 채널 발송 테스트</h2>'
         f'<p>이 메일은 SMTP 설정 검증용으로 발송된 더미 메시지입니다.</p>'
         f'<p>발송 시각(KST): <b>{ts}</b></p>'
         f'{note_html}'
@@ -89,7 +90,7 @@ def _build_teams_card(now: datetime, message: str | None) -> dict:
             "type": "TextBlock",
             "size": "Large",
             "weight": "Bolder",
-            "text": "[DFM Alert] 채널 발송 테스트",
+            "text": f"{ALERT_SUBJECT_PREFIX} 채널 발송 테스트",
         },
         {
             "type": "TextBlock",

@@ -21,8 +21,8 @@ job persistence would conflict with that model.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from datetime import datetime, time
-from typing import Iterable
 
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
