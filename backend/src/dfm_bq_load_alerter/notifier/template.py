@@ -215,15 +215,7 @@ _HTML_TEMPLATE = _env.from_string(
 
   {% if ok_rows and trigger_kind == "report" %}
   <h3 style="margin:24px 4px 12px;color:#2e7d32;font-size:15px;letter-spacing:0.02em;">OK ({{ ok_rows|length }})</h3>
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border-left:4px solid #2e7d32;">
-  <tr><td style="padding:8px 16px;">
-    {% for r in ok_rows %}
-    <div style="display:block;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:13px;color:#374151;">
-      <span style="color:#6b7280;">{% if r.project %}{{ r.project }}.{% endif %}{{ r.dataset }}.</span><strong>{{ r.table_name }}</strong>
-      <span style="color:#6b7280;float:right;">{{ r.today_row_count|fmt_count }} rows · {{ r.delta_percent_vs_yesterday|signed_percent }}</span>
-    </div>
-    {% endfor %}
-  </td></tr></table>
+  {% for r in ok_rows %}{{ render_card(r, "ok") }}{% endfor %}
   {% endif %}
 
   <p style="font-size:11px;color:#9ca3af;text-align:center;margin-top:24px;">dfm-bq-load-alerter</p>
@@ -453,47 +445,6 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
     }
 
 
-def _ok_row_compact(r: TemplateRow) -> dict[str, Any]:
-    """리포트의 OK 행을 한 줄 ColumnSet 으로 압축 (페이로드 절약용)."""
-    project_prefix = f"{r.project}." if r.project else ""
-    return {
-        "type": "ColumnSet",
-        "spacing": "Small",
-        "columns": [
-            {
-                "type": "Column",
-                "width": "stretch",
-                "items": [
-                    {
-                        "type": "TextBlock",
-                        "text": f"{project_prefix}{r.dataset}.**{r.table_name}**",
-                        "size": "Small",
-                        "spacing": "None",
-                        "wrap": True,
-                    }
-                ],
-            },
-            {
-                "type": "Column",
-                "width": "auto",
-                "items": [
-                    {
-                        "type": "TextBlock",
-                        "text": (
-                            f"{_fmt_count(r.today_row_count)} rows · "
-                            f"{_signed_percent(r.delta_percent_vs_yesterday)}"
-                        ),
-                        "size": "Small",
-                        "spacing": "None",
-                        "isSubtle": True,
-                        "horizontalAlignment": "Right",
-                    }
-                ],
-            },
-        ],
-    }
-
-
 def _pill_columns(
     fail_count: int, insufficient_count: int, ok_count: int, trigger_kind: str
 ) -> dict[str, Any] | None:
@@ -699,10 +650,12 @@ def build_teams_card(
                 "separator": True,
             }
         )
-        # OK 행은 한 줄 ColumnSet 으로 압축. body 최상위에 평탄하게 펼쳐서
+        # 리포트의 OK 행도 FAIL/INSUFFICIENT 와 동일한 풀 컨테이너로 렌더 —
+        # 프로젝트·데이터셋·테이블·배치 메타·이전/금일 row count + 유입 시각·
+        # 증감(Δrows, Δ%) 까지 모두 노출. body 최상위에 평탄하게 펼쳐서
         # 큰 리포트일 때 build_teams_cards 가 청크 단위로 분할할 수 있게 한다.
         for r in ok:
-            body.append(_ok_row_compact(r))
+            body.append(_build_card_container(r, "ok"))
 
     return {
         "type": "message",

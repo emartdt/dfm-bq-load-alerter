@@ -14,6 +14,7 @@ state is unchanged across triggers — every check that finds FAIL sends.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, time
@@ -44,6 +45,7 @@ from dfm_bq_load_alerter.notifier.template import (
     build_email_html,
     build_teams_cards,
 )
+from dfm_bq_load_alerter.settings import settings
 
 log = logging.getLogger(__name__)
 
@@ -236,11 +238,16 @@ async def dispatch(
             + (f" · chunks={chunk_total}" if chunk_total > 1 else "")
         )
         try:
+            chunk_delay = settings.teams_chunk_delay_seconds
             for idx, card in enumerate(teams_cards, start=1):
                 log.info(
                     "teams chunk %d/%d webhook=%s", idx, chunk_total, hook.name
                 )
                 await post_teams_card(webhook_url=url, payload=card)
+                # 채팅창 정렬 보존 + Webhook throttle 회피용 sequential gap.
+                # 마지막 청크 이후엔 대기하지 않는다.
+                if idx < chunk_total and chunk_delay > 0:
+                    await asyncio.sleep(chunk_delay)
             await _persist_event(
                 session,
                 snapshot_id=snapshot_id,

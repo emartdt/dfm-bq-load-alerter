@@ -68,6 +68,48 @@ def test_email_html_report_includes_ok_section() -> None:
     assert "OK (2)" in html
 
 
+def test_email_html_report_renders_ok_rows_with_full_card_content() -> None:
+    """리포트의 OK 행도 FAIL 카드와 동일한 풀 콘텐츠로 렌더되어야 한다.
+
+    프로젝트·데이터셋·테이블·배치 시각·버퍼·이전/금일 row count + 유입 시각·
+    증감(Δrows, Δ%) 모두 노출.
+    """
+    row = _row(
+        "ok",
+        project="bw-prj-001",
+        dataset="bw",
+        table_name="PZEVENTID",
+        batch_time=time(7, 0),
+        buffer_minutes=30,
+        yesterday_row_count=1000,
+        today_row_count=1050,
+        delta_percent_vs_yesterday=5.0,
+        yesterday_last_modified=datetime(2026, 5, 5, 7, 4, tzinfo=KST),
+        today_last_modified=datetime(2026, 5, 6, 7, 6, tzinfo=KST),
+    )
+    _, html = build_email_html(
+        trigger_kind="report", expected=NOW, actual=NOW, rows=[row]
+    )
+    # FQN
+    assert "bw-prj-001" in html
+    assert "PZEVENTID" in html
+    # 배치 메타
+    assert "예상 배치 시각" in html
+    assert "07:00" in html
+    assert "버퍼" in html
+    assert "30분" in html
+    # 이전/금일 row count + 유입 시각
+    assert "이전 배치" in html
+    assert "금일 배치" in html
+    assert "1,000" in html
+    assert "1,050" in html
+    assert "2026-05-05 07:04:00" in html
+    assert "2026-05-06 07:06:00" in html
+    # 증감
+    assert "+50" in html
+    assert "+5.00%" in html
+
+
 def test_email_html_check_trigger_omits_ok_section() -> None:
     rows = [_row("ok"), _row("fail", failure_reasons=["x"])]
     _, html = build_email_html(
@@ -251,21 +293,54 @@ def test_teams_cards_returns_single_card_when_small() -> None:
     assert len(cards) == 1
 
 
-def test_teams_card_uses_compact_ok_rows_for_report() -> None:
-    """OK 행은 풀 Container 가 아닌 ColumnSet 한 줄로 압축되어야 한다."""
-    rows = [_row("ok", table_name=f"OK_{i}") for i in range(5)]
+def test_teams_card_renders_ok_rows_as_full_containers_for_report() -> None:
+    """리포트의 OK 행도 FAIL/INSUFFICIENT 와 동일한 풀 Container 로 렌더.
+
+    프로젝트·데이터셋·테이블·배치 메타·이전/금일 row count + 유입 시각·증감
+    Δrows·Δ% 까지 모두 노출되어야 한다.
+    """
+    rows = [
+        _row(
+            "ok",
+            project="bw-prj-001",
+            table_name=f"OK_{i}",
+            batch_time=time(7, 0),
+            buffer_minutes=30,
+            yesterday_row_count=1000,
+            today_row_count=1050,
+            delta_percent_vs_yesterday=5.0,
+            yesterday_last_modified=datetime(2026, 5, 5, 7, 4, tzinfo=KST),
+            today_last_modified=datetime(2026, 5, 6, 7, 6, tzinfo=KST),
+        )
+        for i in range(3)
+    ]
     card = build_teams_card(
         trigger_kind="report", expected=NOW, actual=NOW, rows=rows
     )
     body = card["attachments"][0]["content"]["body"]
-    # OK 헤더 TextBlock 다음에 ColumnSet 들이 평탄하게 나열되어야 한다.
     ok_header_idx = next(
-        i for i, b in enumerate(body)
+        i
+        for i, b in enumerate(body)
         if b.get("type") == "TextBlock" and b.get("text", "").startswith("OK (")
     )
-    compact_rows = body[ok_header_idx + 1:]
-    assert len(compact_rows) == 5
-    assert all(r["type"] == "ColumnSet" for r in compact_rows)
+    ok_containers = body[ok_header_idx + 1 :]
+    assert len(ok_containers) == 3
+    assert all(c["type"] == "Container" for c in ok_containers)
+    # 한 컨테이너에 fqn, 배치 메타, 이전/금일 비교, 증감 라인이 모두 노출되는지.
+    flat = str(ok_containers[0])
+    assert "bw-prj-001.bw.OK_0" in flat
+    assert "예상 배치 시각" in flat
+    assert "07:00" in flat
+    assert "버퍼" in flat
+    assert "30분" in flat
+    assert "이전 배치" in flat
+    assert "금일 배치" in flat
+    assert "1,000" in flat  # 이전 row count
+    assert "1,050" in flat  # 금일 row count
+    assert "+50" in flat  # Δrows (signed)
+    assert "+5.00%" in flat  # Δ%
+    assert "유입 2026-05-05 07:04:00" in flat
+    assert "유입 2026-05-06 07:06:00" in flat
 
 
 def test_teams_card_uses_full_width_for_teams() -> None:
