@@ -73,6 +73,7 @@ class TemplateRow:
     project: str | None = None
     batch_time: time | None = None
     informational_notes: list[str] | None = None
+    buffer_minutes: int | None = None
 
     @property
     def fqn(self) -> str:
@@ -135,8 +136,9 @@ _HTML_TEMPLATE = _env.from_string(
   </table>
 
   <div style="font-size:12px;color:#6b7280;margin-top:6px;">
-    배치 시각 <strong style="color:#374151;">{{ r.batch_time|fmt_time }}</strong>
-    {% if r.expected_check_time %}· 점검 윈도우 기준 {{ kst(r.expected_check_time) }} KST{% endif %}
+    예상 배치 시각 <strong style="color:#374151;">{{ r.batch_time|fmt_time }}</strong>
+    {% if r.buffer_minutes is not none %}· 버퍼 <strong style="color:#374151;">{{ r.buffer_minutes }}분</strong>{% endif %}
+    {% if r.actual_check_time %}· 점검 시각 {{ kst(r.actual_check_time) }} KST{% endif %}
   </div>
 
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin-top:14px;border-collapse:separate;border-spacing:8px 0;">
@@ -345,10 +347,12 @@ def _card_compare_columns(r: TemplateRow) -> dict[str, Any]:
 
 
 def _card_meta_line(r: TemplateRow) -> dict[str, Any]:
-    """이메일의 '배치 시각 HH:MM · 점검 윈도우 기준 ... KST' 라인과 동치."""
-    parts = [f"배치 시각 **{_fmt_time(r.batch_time)}**"]
-    if r.expected_check_time is not None:
-        parts.append(f"점검 윈도우 기준 {_to_kst(r.expected_check_time)} KST")
+    """이메일의 '예상 배치 시각 · 버퍼 · 점검 시각' 라인과 동치."""
+    parts = [f"예상 배치 시각 **{_fmt_time(r.batch_time)}**"]
+    if r.buffer_minutes is not None:
+        parts.append(f"버퍼 **{r.buffer_minutes}분**")
+    if r.actual_check_time is not None:
+        parts.append(f"점검 시각 {_to_kst(r.actual_check_time)} KST")
     return {
         "type": "TextBlock",
         "text": " · ".join(parts),

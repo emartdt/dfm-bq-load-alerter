@@ -143,13 +143,27 @@ def test_email_html_includes_project_dataset_table_in_card() -> None:
     assert "bw" in html
 
 
-def test_email_html_includes_batch_time_label() -> None:
-    row = _row("fail", batch_time=time(7, 0), failure_reasons=["x"])
-    _, html = build_email_html(
-        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+def test_email_html_includes_batch_time_buffer_and_check_time() -> None:
+    """예상 배치 시각 · 버퍼 N분 · 점검 시각 ... 메타 라인 검증."""
+    row = _row(
+        "fail",
+        batch_time=time(7, 0),
+        buffer_minutes=30,
+        failure_reasons=["x"],
     )
+    actual = datetime(2026, 5, 6, 7, 4, tzinfo=KST)
+    _, html = build_email_html(
+        trigger_kind="check", expected=NOW, actual=actual, rows=[row]
+    )
+    assert "예상 배치 시각" in html
     assert "07:00" in html
-    assert "배치 시각" in html
+    assert "버퍼" in html
+    assert "30분" in html
+    assert "점검 시각" in html
+    # 점검 시각은 actual_check_time(=row 의 actual_check_time) 기반.
+    assert "2026-05-06 09:00:00" in html  # _row 의 actual_check_time(=NOW)
+    # 옛 라벨이 남아있지 않아야 한다.
+    assert "점검 윈도우 기준" not in html
 
 
 def test_email_html_shows_delta_count_and_percent_with_sign() -> None:
@@ -186,11 +200,12 @@ def test_email_html_shows_previous_batch_load_time() -> None:
     assert "금일 배치" in html
 
 
-def test_teams_card_fail_container_includes_project_and_batch_time() -> None:
+def test_teams_card_fail_container_includes_project_batch_and_buffer() -> None:
     row = _row(
         "fail",
         project="bw-prj-001",
         batch_time=time(7, 0),
+        buffer_minutes=30,
         failure_reasons=["delta_exceeded"],
     )
     card = build_teams_card(
@@ -200,9 +215,13 @@ def test_teams_card_fail_container_includes_project_and_batch_time() -> None:
     container = next(b for b in body if b.get("type") == "Container")
     flat = str(container)
     assert "bw-prj-001.bw.PZEVENTID" in flat
+    # 이메일과 동일한 메타 라인 라벨이 포함되어야 한다.
+    assert "예상 배치 시각" in flat
     assert "07:00" in flat
-    # 이메일과 동일하게 '배치 시각' 라벨이 카드 메타 라인에 포함되어야 한다.
-    assert "배치 시각" in flat
+    assert "버퍼" in flat
+    assert "30분" in flat
+    assert "점검 시각" in flat
+    assert "점검 윈도우 기준" not in flat
 
 
 def test_teams_card_uses_full_width_for_teams() -> None:

@@ -73,6 +73,7 @@ class DispatchSnapshot:
     project: str | None = None
     batch_time: time | None = None
     informational_notes: list[str] | None = None
+    buffer_minutes: int | None = None
 
 
 def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
@@ -92,6 +93,7 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
         project=s.project,
         batch_time=s.batch_time,
         informational_notes=list(s.informational_notes or []),
+        buffer_minutes=s.buffer_minutes,
     )
 
 
@@ -298,9 +300,13 @@ async def build_dispatch_snapshots(
     if not snapshots:
         return []
 
+    from dfm_bq_load_alerter.db.models import AlertPolicy
     from dfm_bq_load_alerter.settings import settings
 
     fallback_project = settings.bq_project_id or None
+
+    policy = await session.get(AlertPolicy, 1)
+    fallback_buffer = policy.default_buffer_minutes if policy is not None else 30
 
     table_ids = {s.table_id for s in snapshots}
     tables = (
@@ -341,6 +347,11 @@ async def build_dispatch_snapshots(
                 project=table.project_id or fallback_project,
                 batch_time=table.batch_time,
                 informational_notes=list(s.informational_notes or []),
+                buffer_minutes=(
+                    table.buffer_minutes
+                    if table.buffer_minutes is not None
+                    else fallback_buffer
+                ),
             )
         )
     return result
