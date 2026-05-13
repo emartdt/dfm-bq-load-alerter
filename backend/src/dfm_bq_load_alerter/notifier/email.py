@@ -39,19 +39,25 @@ async def send_email(*, to: list[str], subject: str, html: str) -> None:
         "hostname": settings.smtp_host,
         "port": settings.smtp_port,
         "start_tls": settings.smtp_use_starttls,
-        "username": settings.smtp_user or None,
-        "password": settings.smtp_password or None,
     }
+    # Only attempt SMTP AUTH when both credentials are present. Otherwise
+    # aiosmtplib calls login() and fails with "No suitable authentication
+    # method found." against unauthenticated internal relays.
+    auth_enabled = bool(settings.smtp_user and settings.smtp_password)
+    if auth_enabled:
+        send_kwargs["username"] = settings.smtp_user
+        send_kwargs["password"] = settings.smtp_password
     if settings.smtp_local_hostname:
         send_kwargs["local_hostname"] = settings.smtp_local_hostname
 
     log.info(
-        "smtp send: host=%s port=%s to=%d subject=%s starttls=%s local_hostname=%s",
+        "smtp send: host=%s port=%s to=%d subject=%s starttls=%s auth=%s local_hostname=%s",
         settings.smtp_host,
         settings.smtp_port,
         len(to),
         subject,
         settings.smtp_use_starttls,
+        "on" if auth_enabled else "off",
         settings.smtp_local_hostname or "(default)",
     )
     await aiosmtplib.send(message, **send_kwargs)

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from typing import Literal
 
 from sqlalchemy import select
@@ -70,6 +70,8 @@ class DispatchSnapshot:
     note: str | None = None
     today_last_modified: datetime | None = None
     yesterday_last_modified: datetime | None = None
+    project: str | None = None
+    batch_time: time | None = None
 
 
 def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
@@ -86,6 +88,8 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
         note=s.note,
         today_last_modified=s.today_last_modified,
         yesterday_last_modified=s.yesterday_last_modified,
+        project=s.project,
+        batch_time=s.batch_time,
     )
 
 
@@ -292,6 +296,10 @@ async def build_dispatch_snapshots(
     if not snapshots:
         return []
 
+    from dfm_bq_load_alerter.settings import settings
+
+    fallback_project = settings.bq_project_id or None
+
     table_ids = {s.table_id for s in snapshots}
     tables = (
         await session.execute(select(Table).where(Table.id.in_(table_ids)))
@@ -328,6 +336,8 @@ async def build_dispatch_snapshots(
                 note=table.note,
                 today_last_modified=s.last_modified,
                 yesterday_last_modified=yday.last_modified if yday else None,
+                project=table.project_id or fallback_project,
+                batch_time=table.batch_time,
             )
         )
     return result

@@ -1,13 +1,14 @@
 """Build alert/report messages — HTML for SMTP, Adaptive Card JSON for Teams.
 
-Content per rev 2 P11: dataset · table · expected/actual check time ·
-yesterday/today row_count · delta % · failure reasons. Misfire catch-up
-shows expected vs actual side-by-side.
+Rev 5 (모던 카드 템플릿): 각 테이블을 카드 단위로 표현하여 프로젝트·데이터셋·
+테이블·배치 시각·이전/오늘 유입 시각·ROW COUNT·증감(Δrows, Δ%)을 한눈에
+파악할 수 있도록 구성한다. Teams 측은 Adaptive Card v1.5 의 Container +
+ColumnSet 으로 동일한 정보 구조를 재현한다.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -22,7 +23,33 @@ def _to_kst(dt: datetime) -> str:
     return dt.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _fmt_time(t: time | None) -> str:
+    return t.strftime("%H:%M") if t is not None else "-"
+
+
+def _fmt_count(n: int | None) -> str:
+    return f"{n:,}" if n is not None else "-"
+
+
+def _signed_count(n: int | None) -> str:
+    if n is None:
+        return "-"
+    sign = "+" if n > 0 else ""
+    return f"{sign}{n:,}"
+
+
+def _signed_percent(p: float | None) -> str:
+    if p is None:
+        return "-"
+    sign = "+" if p > 0 else ""
+    return f"{sign}{p:.2f}%"
+
+
 _env.filters["kst"] = _to_kst
+_env.filters["fmt_count"] = _fmt_count
+_env.filters["signed_count"] = _signed_count
+_env.filters["signed_percent"] = _signed_percent
+_env.filters["fmt_time"] = _fmt_time
 _env.globals["kst"] = _to_kst
 
 
@@ -40,84 +67,152 @@ class TemplateRow:
     note: str | None = None
     today_last_modified: datetime | None = None
     yesterday_last_modified: datetime | None = None
+    project: str | None = None
+    batch_time: time | None = None
+
+    @property
+    def fqn(self) -> str:
+        """Project.dataset.table 또는 dataset.table — 카드 헤더 식별자."""
+        parts = [self.project, self.dataset, self.table_name]
+        return ".".join(p for p in parts if p)
+
+    @property
+    def delta_count(self) -> int | None:
+        if self.today_row_count is None or self.yesterday_row_count is None:
+            return None
+        return self.today_row_count - self.yesterday_row_count
+
+
+_STATUS_META = {
+    "fail": {"label": "FAIL", "bg": "#fdecea", "fg": "#c62828", "accent": "#c62828"},
+    "ok": {"label": "OK", "bg": "#e8f5e9", "fg": "#2e7d32", "accent": "#2e7d32"},
+    "insufficient_history": {
+        "label": "INSUFFICIENT",
+        "bg": "#fff4e5",
+        "fg": "#b26a00",
+        "accent": "#f57c00",
+    },
+}
+
+
+def _delta_color(p: float | None) -> str:
+    if p is None:
+        return "#6b7280"
+    if p > 0:
+        return "#2e7d32"
+    if p < 0:
+        return "#c62828"
+    return "#6b7280"
+
+
+_env.globals["status_meta"] = _STATUS_META
+_env.globals["delta_color"] = _delta_color
 
 
 _HTML_TEMPLATE = _env.from_string(
     """<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><title>{{ subject }}</title></head>
-<body style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;">
-<h2 style="margin-bottom:0.25rem;">{{ subject }}</h2>
-<p style="color:#888;margin-top:0;">trigger: {{ trigger_kind }} · expected={{ expected_kst }} KST · actual={{ actual_kst }} KST</p>
+<body style="margin:0;padding:24px;background:#f5f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#1f2937;">
 
-{% if fail_rows %}
-<h3 style="color:#c62828;">FAIL ({{ fail_rows|length }})</h3>
-<table style="border-collapse:collapse;width:100%;font-size:14px;">
-<thead><tr style="background:#fbe9e7;">
-  <th style="padding:6px;text-align:left;">Dataset.Table</th>
-  <th style="padding:6px;text-align:right;">어제 (rows / 유입)</th>
-  <th style="padding:6px;text-align:right;">오늘 (rows / 유입)</th>
-  <th style="padding:6px;text-align:right;">Δ%</th>
-  <th style="padding:6px;text-align:left;">Reasons / Note</th>
-</tr></thead>
-<tbody>
-{% for r in fail_rows %}<tr>
-  <td style="padding:6px;border-bottom:1px solid #eee;">{{ r.dataset }}.{{ r.table_name }}</td>
-  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">
-    {{ "{:,}".format(r.yesterday_row_count) if r.yesterday_row_count is not none else "-" }}
-    {% if r.yesterday_last_modified %}<br><span style="color:#888;font-size:12px;">{{ kst(r.yesterday_last_modified) }}</span>{% endif %}
-  </td>
-  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">
-    {{ "{:,}".format(r.today_row_count) if r.today_row_count is not none else "-" }}
-    {% if r.today_last_modified %}<br><span style="color:#888;font-size:12px;">{{ kst(r.today_last_modified) }}</span>{% endif %}
-  </td>
-  <td style="padding:6px;text-align:right;border-bottom:1px solid #eee;">{{ "%.2f"|format(r.delta_percent_vs_yesterday) if r.delta_percent_vs_yesterday is not none else "-" }}</td>
-  <td style="padding:6px;border-bottom:1px solid #eee;">
-    {{ r.failure_reasons|join(", ") }}
-    {% if r.note %}<br><span style="color:#888;font-size:12px;">📝 {{ r.note }}</span>{% endif %}
-  </td>
-</tr>{% endfor %}
-</tbody></table>
-{% endif %}
+{% macro render_card(r, status) -%}
+{% set meta = status_meta[status] %}
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);margin-bottom:12px;border-left:4px solid {{ meta.accent }};">
+<tr><td style="padding:16px 20px;">
 
-{% if insufficient_rows %}
-<h3 style="color:#f57c00;">INSUFFICIENT HISTORY ({{ insufficient_rows|length }})</h3>
-<ul>{% for r in insufficient_rows %}<li>{{ r.dataset }}.{{ r.table_name }} (today rows={{ r.today_row_count if r.today_row_count is not none else "-" }})</li>{% endfor %}</ul>
-{% endif %}
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;">
+  <tr>
+    <td style="font-size:15px;font-weight:700;color:#111827;word-break:break-all;">
+      {% if r.project %}<span style="color:#6b7280;font-weight:500;">{{ r.project }}.</span>{% endif %}{{ r.dataset }}.<span style="color:{{ meta.accent }};">{{ r.table_name }}</span>
+    </td>
+    <td align="right" style="white-space:nowrap;padding-left:8px;">
+      <span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:{{ meta.bg }};color:{{ meta.fg }};">{{ meta.label }}</span>
+    </td>
+  </tr>
+  </table>
 
-{% if ok_rows and trigger_kind == "report" %}
-<h3 style="color:#2e7d32;">OK ({{ ok_rows|length }})</h3>
-<ul>{% for r in ok_rows %}<li>{{ r.dataset }}.{{ r.table_name }} ({{ "{:,}".format(r.today_row_count) if r.today_row_count is not none else "-" }} rows)</li>{% endfor %}</ul>
-{% endif %}
+  <div style="font-size:12px;color:#6b7280;margin-top:6px;">
+    배치 시각 <strong style="color:#374151;">{{ r.batch_time|fmt_time }}</strong>
+    {% if r.expected_check_time %}· 점검 윈도우 기준 {{ kst(r.expected_check_time) }} KST{% endif %}
+  </div>
 
-<hr><p style="font-size:12px;color:#888;">dfm-bq-load-alerter v0.2.x</p>
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin-top:14px;border-collapse:separate;border-spacing:8px 0;">
+  <tr>
+    <td style="width:50%;background:#f9fafb;border-radius:8px;padding:12px 14px;vertical-align:top;">
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;">이전 배치</div>
+      <div style="font-size:18px;font-weight:700;color:#111827;margin-top:2px;">{{ r.yesterday_row_count|fmt_count }} <span style="font-size:11px;font-weight:500;color:#6b7280;">rows</span></div>
+      <div style="font-size:11px;color:#6b7280;margin-top:4px;">{% if r.yesterday_last_modified %}유입 {{ kst(r.yesterday_last_modified) }}{% else %}유입 시각 없음{% endif %}</div>
+    </td>
+    <td style="width:50%;background:#f9fafb;border-radius:8px;padding:12px 14px;vertical-align:top;">
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;">금일 배치</div>
+      <div style="font-size:18px;font-weight:700;color:#111827;margin-top:2px;">{{ r.today_row_count|fmt_count }} <span style="font-size:11px;font-weight:500;color:#6b7280;">rows</span></div>
+      <div style="font-size:11px;color:#6b7280;margin-top:4px;">{% if r.today_last_modified %}유입 {{ kst(r.today_last_modified) }}{% else %}유입 시각 없음{% endif %}</div>
+    </td>
+  </tr>
+  </table>
+
+  <div style="margin-top:12px;padding:10px 14px;background:#f3f4f6;border-radius:8px;display:block;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;">
+    <tr>
+      <td style="font-size:12px;color:#6b7280;">증감</td>
+      <td align="right" style="font-size:14px;font-weight:700;color:{{ delta_color(r.delta_percent_vs_yesterday) }};">
+        Δ {{ r.delta_count|signed_count }} rows · {{ r.delta_percent_vs_yesterday|signed_percent }}
+      </td>
+    </tr>
+    </table>
+  </div>
+
+  {% if r.failure_reasons %}
+  <div style="margin-top:12px;">
+    {% for reason in r.failure_reasons %}<span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#fdecea;color:#c62828;margin-right:6px;">⚠ {{ reason }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if r.note %}
+  <div style="margin-top:10px;padding:8px 12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;color:#78350f;">📝 {{ r.note }}</div>
+  {% endif %}
+
+</td></tr></table>
+{%- endmacro %}
+
+<div style="max-width:760px;margin:0 auto;">
+
+  <div style="background:#ffffff;border-radius:12px;padding:20px 24px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:16px;border-left:6px solid {{ banner_accent }};">
+    <div style="font-size:13px;color:#6b7280;letter-spacing:0.04em;text-transform:uppercase;">{{ trigger_label }}</div>
+    <div style="font-size:22px;font-weight:700;margin-top:4px;">{{ subject }}</div>
+    <div style="font-size:13px;color:#6b7280;margin-top:8px;">
+      예정 점검 {{ expected_kst }} KST · 실측 점검 {{ actual_kst }} KST
+    </div>
+    <div style="margin-top:12px;">
+      {% if fail_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fdecea;color:#c62828;margin-right:6px;">FAIL {{ fail_rows|length }}</span>{% endif %}
+      {% if insufficient_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fff4e5;color:#b26a00;margin-right:6px;">INSUFFICIENT {{ insufficient_rows|length }}</span>{% endif %}
+      {% if ok_rows and trigger_kind == "report" %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#e8f5e9;color:#2e7d32;">OK {{ ok_rows|length }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if fail_rows %}
+  <h3 style="margin:24px 4px 12px;color:#c62828;font-size:15px;letter-spacing:0.02em;">FAIL ({{ fail_rows|length }})</h3>
+  {% for r in fail_rows %}{{ render_card(r, "fail") }}{% endfor %}
+  {% endif %}
+
+  {% if insufficient_rows %}
+  <h3 style="margin:24px 4px 12px;color:#b26a00;font-size:15px;letter-spacing:0.02em;">INSUFFICIENT HISTORY ({{ insufficient_rows|length }})</h3>
+  {% for r in insufficient_rows %}{{ render_card(r, "insufficient_history") }}{% endfor %}
+  {% endif %}
+
+  {% if ok_rows and trigger_kind == "report" %}
+  <h3 style="margin:24px 4px 12px;color:#2e7d32;font-size:15px;letter-spacing:0.02em;">OK ({{ ok_rows|length }})</h3>
+  {% for r in ok_rows %}{{ render_card(r, "ok") }}{% endfor %}
+  {% endif %}
+
+  <p style="font-size:11px;color:#9ca3af;text-align:center;margin-top:24px;">dfm-bq-load-alerter</p>
+</div>
 </body></html>"""
 )
 
 
-def _fmt_count(n: int | None) -> str:
-    return f"{n:,}" if n is not None else "-"
-
-
-def _fail_fact_value(r: TemplateRow) -> str:
-    """Compose the FAIL fact value for an Adaptive Card."""
-    yday_part = f"yesterday={_fmt_count(r.yesterday_row_count)}"
-    if r.yesterday_last_modified is not None:
-        yday_part += f" @ {_to_kst(r.yesterday_last_modified)}"
-    today_part = f"today={_fmt_count(r.today_row_count)}"
-    if r.today_last_modified is not None:
-        today_part += f" @ {_to_kst(r.today_last_modified)}"
-    delta = (
-        f"Δ%={r.delta_percent_vs_yesterday}"
-        if r.delta_percent_vs_yesterday is not None
-        else "Δ%=-"
-    )
-    pieces = [yday_part, today_part, delta, ", ".join(r.failure_reasons)]
-    if r.note:
-        pieces.append(f"📝 {r.note}")
-    return " · ".join(p for p in pieces if p)
-
-
-def _bucket_rows(rows: list[TemplateRow]) -> tuple[list[TemplateRow], list[TemplateRow], list[TemplateRow]]:
+def _bucket_rows(
+    rows: list[TemplateRow],
+) -> tuple[list[TemplateRow], list[TemplateRow], list[TemplateRow]]:
     fail = [r for r in rows if r.status == "fail"]
     insufficient = [r for r in rows if r.status == "insufficient_history"]
     ok = [r for r in rows if r.status == "ok"]
@@ -137,9 +232,18 @@ def build_email_html(
     subject = build_email_subject(
         trigger_kind=trigger_kind, fail_count=len(fail), expected=expected
     )
+    if fail:
+        banner_accent = "#c62828"
+    elif insufficient:
+        banner_accent = "#f57c00"
+    else:
+        banner_accent = "#2e7d32"
+    trigger_label = "일일 리포트" if trigger_kind == "report" else "점검 알림"
     html = _HTML_TEMPLATE.render(
         subject=subject,
         trigger_kind=trigger_kind,
+        trigger_label=trigger_label,
+        banner_accent=banner_accent,
         expected_kst=_to_kst(expected),
         actual_kst=_to_kst(actual),
         fail_rows=fail,
@@ -147,6 +251,137 @@ def build_email_html(
         ok_rows=ok,
     )
     return subject, html
+
+
+def _card_title_columns(r: TemplateRow, status: str) -> dict[str, Any]:
+    meta = _STATUS_META[status]
+    project_prefix = f"{r.project}." if r.project else ""
+    return {
+        "type": "ColumnSet",
+        "columns": [
+            {
+                "type": "Column",
+                "width": "stretch",
+                "items": [
+                    {
+                        "type": "TextBlock",
+                        "text": f"{project_prefix}{r.dataset}.{r.table_name}",
+                        "weight": "Bolder",
+                        "wrap": True,
+                    }
+                ],
+            },
+            {
+                "type": "Column",
+                "width": "auto",
+                "items": [
+                    {
+                        "type": "TextBlock",
+                        "text": meta["label"],
+                        "weight": "Bolder",
+                        "color": "Attention"
+                        if status == "fail"
+                        else ("Warning" if status == "insufficient_history" else "Good"),
+                        "horizontalAlignment": "Right",
+                    }
+                ],
+            },
+        ],
+    }
+
+
+def _card_compare_columns(r: TemplateRow) -> dict[str, Any]:
+    def _side(label: str, count: int | None, ts: datetime | None) -> dict[str, Any]:
+        return {
+            "type": "Column",
+            "width": "stretch",
+            "style": "emphasis",
+            "items": [
+                {
+                    "type": "TextBlock",
+                    "text": label,
+                    "isSubtle": True,
+                    "size": "Small",
+                    "spacing": "None",
+                },
+                {
+                    "type": "TextBlock",
+                    "text": f"**{_fmt_count(count)}** rows",
+                    "size": "Medium",
+                    "spacing": "None",
+                    "wrap": True,
+                },
+                {
+                    "type": "TextBlock",
+                    "text": f"유입 {_to_kst(ts)}" if ts is not None else "유입 시각 없음",
+                    "isSubtle": True,
+                    "size": "Small",
+                    "spacing": "None",
+                    "wrap": True,
+                },
+            ],
+        }
+
+    return {
+        "type": "ColumnSet",
+        "spacing": "Small",
+        "columns": [
+            _side("이전 배치", r.yesterday_row_count, r.yesterday_last_modified),
+            _side("금일 배치", r.today_row_count, r.today_last_modified),
+        ],
+    }
+
+
+def _card_delta_block(r: TemplateRow) -> dict[str, Any]:
+    return {
+        "type": "FactSet",
+        "spacing": "Small",
+        "facts": [
+            {"title": "배치 시각", "value": _fmt_time(r.batch_time)},
+            {"title": "증감 rows", "value": _signed_count(r.delta_count)},
+            {"title": "증감 %", "value": _signed_percent(r.delta_percent_vs_yesterday)},
+        ],
+    }
+
+
+def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
+    container_style = (
+        "attention"
+        if status == "fail"
+        else ("warning" if status == "insufficient_history" else "good")
+    )
+    items: list[dict[str, Any]] = [
+        _card_title_columns(r, status),
+        _card_compare_columns(r),
+        _card_delta_block(r),
+    ]
+    if r.failure_reasons:
+        items.append(
+            {
+                "type": "TextBlock",
+                "text": "⚠ " + ", ".join(r.failure_reasons),
+                "color": "Attention",
+                "wrap": True,
+                "spacing": "Small",
+            }
+        )
+    if r.note:
+        items.append(
+            {
+                "type": "TextBlock",
+                "text": f"📝 {r.note}",
+                "isSubtle": True,
+                "wrap": True,
+                "spacing": "Small",
+            }
+        )
+    return {
+        "type": "Container",
+        "style": container_style,
+        "bleed": False,
+        "spacing": "Medium",
+        "items": items,
+    }
 
 
 def build_teams_card(
@@ -165,12 +400,17 @@ def build_teams_card(
             "weight": "Bolder",
             "text": summary,
             "color": "Attention" if fail else "Good",
+            "wrap": True,
         },
         {
             "type": "TextBlock",
             "isSubtle": True,
             "spacing": "None",
-            "text": f"trigger={trigger_kind} · expected={_to_kst(expected)} · actual={_to_kst(actual)}",
+            "text": (
+                f"trigger={trigger_kind} · expected={_to_kst(expected)}"
+                f" · actual={_to_kst(actual)}"
+            ),
+            "wrap": True,
         },
     ]
 
@@ -184,18 +424,8 @@ def build_teams_card(
                 "separator": True,
             }
         )
-        body.append(
-            {
-                "type": "FactSet",
-                "facts": [
-                    {
-                        "title": f"{r.dataset}.{r.table_name}",
-                        "value": _fail_fact_value(r),
-                    }
-                    for r in fail
-                ],
-            }
-        )
+        for r in fail:
+            body.append(_build_card_container(r, "fail"))
 
     if insufficient:
         body.append(
@@ -207,18 +437,8 @@ def build_teams_card(
                 "separator": True,
             }
         )
-        body.append(
-            {
-                "type": "FactSet",
-                "facts": [
-                    {
-                        "title": f"{r.dataset}.{r.table_name}",
-                        "value": f"today={r.today_row_count}",
-                    }
-                    for r in insufficient
-                ],
-            }
-        )
+        for r in insufficient:
+            body.append(_build_card_container(r, "insufficient_history"))
 
     if ok and trigger_kind == "report":
         body.append(
@@ -230,18 +450,8 @@ def build_teams_card(
                 "separator": True,
             }
         )
-        body.append(
-            {
-                "type": "FactSet",
-                "facts": [
-                    {
-                        "title": f"{r.dataset}.{r.table_name}",
-                        "value": f"today={r.today_row_count}",
-                    }
-                    for r in ok
-                ],
-            }
-        )
+        for r in ok:
+            body.append(_build_card_container(r, "ok"))
 
     return {
         "type": "message",
