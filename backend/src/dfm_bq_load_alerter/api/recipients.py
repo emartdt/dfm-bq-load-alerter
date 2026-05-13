@@ -11,11 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dfm_bq_load_alerter.auth import require_admin
 from dfm_bq_load_alerter.db.models import AlertRecipient
 from dfm_bq_load_alerter.db.session import get_session
-from dfm_bq_load_alerter.notifier.template import ALERT_SUBJECT_PREFIX
 from dfm_bq_load_alerter.notifier.email import (
     EmailNotConfiguredError,
     send_email,
 )
+from dfm_bq_load_alerter.notifier.template import ALERT_SUBJECT_PREFIX
 
 router = APIRouter(prefix="/api/recipients", tags=["recipients"])
 

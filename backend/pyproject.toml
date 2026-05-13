@@ -67,6 +67,10 @@ extend-immutable-calls = [
 [tool.ruff.lint.per-file-ignores]
 # Jinja2 HTML 템플릿 문자열은 가독성 위해 line-length 100 예외 허용
 "src/dfm_bq_load_alerter/notifier/template.py" = ["E501"]
+# 통계 SQL 리터럴은 가독성 위해 line-length 100 예외 허용
+"src/dfm_bq_load_alerter/api/history.py" = ["E501"]
+# 테스트 함수명을 한국어로 작성하는 정책 (CLAUDE.md "한국어 우선") — N802 면제
+"tests/*.py" = ["N802"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
