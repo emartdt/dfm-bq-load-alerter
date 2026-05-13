@@ -275,6 +275,17 @@ class CheckSnapshot(Base):
         server_default="[]",
         comment="실패 사유 코드 목록 (JSONB 배열). 예: ['not_loaded','row_count_zero'].",
     )
+    informational_notes: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default="[]",
+        comment=(
+            "FAIL 판정과 무관한 운영 안내 메시지 목록 (JSONB 배열). "
+            "예: ['이전 배치 기록 없음 - 증감률 비교 생략']. 알람 템플릿에서 "
+            "failure_reasons(빨강) 과 시각적으로 구분 렌더된다."
+        ),
+    )
     delta_percent_vs_yesterday: Mapped[float | None] = mapped_column(
         Numeric(8, 2),
         nullable=True,

@@ -12,11 +12,17 @@ KST = ZoneInfo("Asia/Seoul")
 
 @dataclass(frozen=True, slots=True)
 class CheckResult:
-    """Pure evaluation outcome for a single (table, metadata, yesterday) tuple."""
+    """Pure evaluation outcome for a single (table, metadata, yesterday) tuple.
+
+    ``failure_reasons`` 는 FAIL 판정을 유발한 조건들이며, ``informational_notes`` 는
+    FAIL 과 무관한 운영 안내(예: 이전 배치 기록 부재로 증감률 비교를 생략) 다.
+    두 필드는 알람 템플릿에서도 색상/아이콘으로 구분 렌더된다.
+    """
 
     status: CheckStatus
     failure_reasons: list[str]
     delta_percent_vs_yesterday: float | None
+    informational_notes: list[str]
 
 
 def today_kst(now: datetime | None = None) -> date:
@@ -126,7 +132,8 @@ def evaluate(
     status = CheckStatus.fail if reasons else CheckStatus.ok
     return CheckResult(
         status=status,
-        failure_reasons=reasons + notes,
+        failure_reasons=reasons,
+        informational_notes=notes,
         delta_percent_vs_yesterday=(
             None
             if delta_percent is None or delta_percent == float("inf")

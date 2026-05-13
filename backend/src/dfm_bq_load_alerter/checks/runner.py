@@ -202,6 +202,7 @@ async def run_checks(
                 failure_reasons=[
                     f"BigQuery 호출 실패: {type(metadata).__name__}: {metadata}"
                 ],
+                informational_notes=[],
                 delta_percent_vs_yesterday=None,
             )
             session.add(snapshot)
@@ -252,6 +253,7 @@ async def run_checks(
             last_modified=metadata.last_modified,
             status=result.status,
             failure_reasons=result.failure_reasons,
+            informational_notes=result.informational_notes,
             delta_percent_vs_yesterday=result.delta_percent_vs_yesterday,
         )
         session.add(snapshot)

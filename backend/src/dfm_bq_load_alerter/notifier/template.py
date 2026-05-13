@@ -72,6 +72,7 @@ class TemplateRow:
     yesterday_last_modified: datetime | None = None
     project: str | None = None
     batch_time: time | None = None
+    informational_notes: list[str] | None = None
 
     @property
     def fqn(self) -> str:
@@ -166,7 +167,15 @@ _HTML_TEMPLATE = _env.from_string(
 
   {% if r.failure_reasons %}
   <div style="margin-top:12px;">
-    {% for reason in r.failure_reasons %}<span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#fdecea;color:#c62828;margin-right:6px;">⚠ {{ reason }}</span>{% endfor %}
+    <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">실패 사유</div>
+    {% for reason in r.failure_reasons %}<span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#fdecea;color:#c62828;margin-right:6px;margin-bottom:4px;">⚠ {{ reason }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if r.informational_notes %}
+  <div style="margin-top:12px;">
+    <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">참고</div>
+    {% for info in r.informational_notes %}<span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#e0f2fe;color:#075985;margin-right:6px;margin-bottom:4px;">ⓘ {{ info }}</span>{% endfor %}
   </div>
   {% endif %}
 
@@ -390,8 +399,22 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
         items.append(
             {
                 "type": "TextBlock",
-                "text": "  ".join(f"⚠ {reason}" for reason in r.failure_reasons),
+                "text": "**실패 사유**  "
+                + "  ".join(f"⚠ {reason}" for reason in r.failure_reasons),
                 "color": "Attention",
+                "weight": "Bolder",
+                "size": "Small",
+                "wrap": True,
+                "spacing": "Small",
+            }
+        )
+    if r.informational_notes:
+        items.append(
+            {
+                "type": "TextBlock",
+                "text": "**참고**  "
+                + "  ".join(f"ⓘ {info}" for info in r.informational_notes),
+                "color": "Accent",
                 "weight": "Bolder",
                 "size": "Small",
                 "wrap": True,

@@ -72,6 +72,7 @@ class DispatchSnapshot:
     yesterday_last_modified: datetime | None = None
     project: str | None = None
     batch_time: time | None = None
+    informational_notes: list[str] | None = None
 
 
 def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
@@ -90,6 +91,7 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
         yesterday_last_modified=s.yesterday_last_modified,
         project=s.project,
         batch_time=s.batch_time,
+        informational_notes=list(s.informational_notes or []),
     )
 
 
@@ -338,6 +340,7 @@ async def build_dispatch_snapshots(
                 yesterday_last_modified=yday.last_modified if yday else None,
                 project=table.project_id or fallback_project,
                 batch_time=table.batch_time,
+                informational_notes=list(s.informational_notes or []),
             )
         )
     return result

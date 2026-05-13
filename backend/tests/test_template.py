@@ -215,6 +215,64 @@ def test_teams_card_uses_full_width_for_teams() -> None:
     assert content.get("msteams", {}).get("width") == "Full"
 
 
+def test_email_html_renders_failure_reasons_and_informational_notes_separately() -> None:
+    """실패 사유(빨간 ⚠)와 정보성 노트(파란 ⓘ)는 별도 라벨/색상 영역으로 렌더."""
+    row = _row(
+        "fail",
+        failure_reasons=["오늘 미적재"],
+        informational_notes=["이전 배치 기록 없음 - 증감률 비교 생략"],
+    )
+    _, html = build_email_html(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    assert "⚠ 오늘 미적재" in html
+    assert "ⓘ 이전 배치 기록 없음 - 증감률 비교 생략" in html
+    # 실패 사유 pill 색상(빨강 #c62828) 과 정보성 pill 색상(파랑 #075985) 이 함께 등장.
+    assert "#c62828" in html
+    assert "#075985" in html
+    assert "실패 사유" in html
+    assert "참고" in html
+
+
+def test_email_html_omits_info_section_when_empty() -> None:
+    row = _row("fail", failure_reasons=["x"], informational_notes=None)
+    _, html = build_email_html(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    # 참고 섹션 라벨이 없는 카드.
+    assert "ⓘ" not in html
+
+
+def test_teams_card_renders_informational_notes_distinctly() -> None:
+    row = _row(
+        "fail",
+        failure_reasons=["오늘 미적재"],
+        informational_notes=["이전 배치 기록 없음 - 증감률 비교 생략"],
+    )
+    card = build_teams_card(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    container = next(
+        b
+        for b in card["attachments"][0]["content"]["body"]
+        if b.get("type") == "Container"
+    )
+    fail_text = next(
+        item
+        for item in container["items"]
+        if item.get("type") == "TextBlock" and item.get("color") == "Attention"
+    )
+    info_text = next(
+        item
+        for item in container["items"]
+        if item.get("type") == "TextBlock" and item.get("color") == "Accent"
+    )
+    assert "오늘 미적재" in fail_text["text"]
+    assert "이전 배치 기록 없음" in info_text["text"]
+    assert "ⓘ" in info_text["text"]
+    assert "⚠" in fail_text["text"]
+
+
 def test_teams_card_includes_delta_line() -> None:
     """이메일과 동일하게 Δrows · Δ% 가 한 줄에 결합되어 노출되어야 한다."""
     row = _row(

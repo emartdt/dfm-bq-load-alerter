@@ -97,8 +97,12 @@ def test_증감률이_임계치_이상이면_FAIL이다() -> None:
     assert result.delta_percent_vs_yesterday == 60.0
 
 
-def test_베이스라인이_없고_다른_문제가_없으면_OK이며_사유에_생략_노트가_남는다() -> None:
-    """전일 베이스라인이 없으면 증감률 비교를 건너뛰고 OK + 노트."""
+def test_베이스라인이_없고_다른_문제가_없으면_OK이며_정보성_노트가_남는다() -> None:
+    """전일 베이스라인이 없으면 증감률 비교를 건너뛰고 OK + 정보성 노트.
+
+    노트는 FAIL 사유가 아니므로 ``informational_notes`` 에 기록되어
+    알람 템플릿에서도 빨간 ⚠ 가 아닌 파란 ⓘ 로 구분 렌더된다.
+    """
     with freeze_time(datetime(2026, 5, 6, 8, 0, tzinfo=KST)):
         result = evaluate(
             _메타(
@@ -109,12 +113,13 @@ def test_베이스라인이_없고_다른_문제가_없으면_OK이며_사유에
             delta_threshold_percent=25.0,
         )
     assert result.status == CheckStatus.ok
-    assert result.failure_reasons == ["이전 배치 기록 없음 - 증감률 비교 생략"]
+    assert result.failure_reasons == []
+    assert result.informational_notes == ["이전 배치 기록 없음 - 증감률 비교 생략"]
     assert result.delta_percent_vs_yesterday is None
 
 
-def test_베이스라인이_없어도_다른_FAIL_사유가_있으면_FAIL이고_생략_노트는_함께_기록된다() -> None:
-    """베이스라인 없음 노트는 FAIL 사유와 공존한다."""
+def test_베이스라인이_없어도_다른_FAIL_사유가_있으면_FAIL이고_정보성_노트는_별도로_기록된다() -> None:
+    """베이스라인 없음은 정보성 노트로, 미적재는 실패 사유로 분리 기록된다."""
     with freeze_time(datetime(2026, 5, 6, 8, 0, tzinfo=KST)):
         result = evaluate(
             _메타(
@@ -126,7 +131,8 @@ def test_베이스라인이_없어도_다른_FAIL_사유가_있으면_FAIL이고
         )
     assert result.status == CheckStatus.fail
     assert "오늘 미적재" in result.failure_reasons
-    assert "이전 배치 기록 없음 - 증감률 비교 생략" in result.failure_reasons
+    assert "이전 배치 기록 없음 - 증감률 비교 생략" not in result.failure_reasons
+    assert "이전 배치 기록 없음 - 증감률 비교 생략" in result.informational_notes
 
 
 def test_월간_테이블은_배치일이_아닌_날짜에는_점검을_스킵한다() -> None:
