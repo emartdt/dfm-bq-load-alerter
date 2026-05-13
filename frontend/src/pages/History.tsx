@@ -12,7 +12,7 @@ import {
   type TriggerKind,
 } from '../api/history'
 
-const PAGE_SIZE = 50
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
 
 const SNAPSHOT_STATUS_LABEL: Record<string, string> = {
   ok: '정상',
@@ -44,6 +44,18 @@ const SNAPSHOT_STATUS_HELP: Array<{ label: string; desc: string }> = [
   },
 ]
 
+const EVENT_STATUS_HELP: Array<{ label: string; desc: string }> = [
+  { label: 'sent', desc: '대상 채널로 정상 발송 완료.' },
+  {
+    label: 'failed',
+    desc: '발송을 시도했으나 SMTP/HTTP 호출이 예외로 실패 (네트워크·인증·타임아웃 등). 오류 컬럼에 원인 기록 — 채널 장애 신호.',
+  },
+  {
+    label: 'skipped',
+    desc: '설정 부재로 발송을 시도하지 않음 (SMTP 미설정 / 활성 수신자 없음 / webhook_url 비어있음 등). 채널 장애가 아닌 설정 점검 신호.',
+  },
+]
+
 function describeError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
@@ -62,12 +74,16 @@ export function History() {
   const [snaps, setSnaps] = useState<SnapshotItem[]>([])
   const [snapsTotal, setSnapsTotal] = useState<number>(0)
   const [snapStatus, setSnapStatus] = useState<SnapshotStatus | ''>('')
+  const [snapPage, setSnapPage] = useState<number>(1)
+  const [snapPageSize, setSnapPageSize] = useState<number>(50)
 
   const [events, setEvents] = useState<EventItem[]>([])
   const [eventsTotal, setEventsTotal] = useState<number>(0)
   const [eventChannel, setEventChannel] = useState<EventChannel | ''>('')
   const [eventStatus, setEventStatus] = useState<EventStatus | ''>('')
   const [trigger, setTrigger] = useState<TriggerKind | ''>('')
+  const [eventPage, setEventPage] = useState<number>(1)
+  const [eventPageSize, setEventPageSize] = useState<number>(50)
 
   const loadSnaps = useCallback(async () => {
     setBusy(true)
@@ -75,7 +91,8 @@ export function History() {
     try {
       const page = await listSnapshots({
         status: snapStatus || undefined,
-        limit: PAGE_SIZE,
+        limit: snapPageSize,
+        offset: (snapPage - 1) * snapPageSize,
       })
       setSnaps(page.items)
       setSnapsTotal(page.total)
@@ -84,7 +101,7 @@ export function History() {
     } finally {
       setBusy(false)
     }
-  }, [snapStatus])
+  }, [snapStatus, snapPage, snapPageSize])
 
   const loadEvents = useCallback(async () => {
     setBusy(true)
@@ -94,7 +111,8 @@ export function History() {
         channel: eventChannel || undefined,
         event_status: eventStatus || undefined,
         trigger_kind: trigger || undefined,
-        limit: PAGE_SIZE,
+        limit: eventPageSize,
+        offset: (eventPage - 1) * eventPageSize,
       })
       setEvents(page.items)
       setEventsTotal(page.total)
@@ -103,12 +121,28 @@ export function History() {
     } finally {
       setBusy(false)
     }
-  }, [eventChannel, eventStatus, trigger])
+  }, [eventChannel, eventStatus, trigger, eventPage, eventPageSize])
+
+  useEffect(() => {
+    setSnapPage(1)
+  }, [snapStatus, snapPageSize])
+
+  useEffect(() => {
+    setEventPage(1)
+  }, [eventChannel, eventStatus, trigger, eventPageSize])
 
   useEffect(() => {
     if (tab === 'snapshots') void loadSnaps()
     else void loadEvents()
   }, [tab, loadSnaps, loadEvents])
+
+  const snapTotalPages = Math.max(1, Math.ceil(snapsTotal / snapPageSize))
+  const snapCurrentPage = Math.min(snapPage, snapTotalPages)
+  const snapPageStart = (snapCurrentPage - 1) * snapPageSize
+
+  const eventTotalPages = Math.max(1, Math.ceil(eventsTotal / eventPageSize))
+  const eventCurrentPage = Math.min(eventPage, eventTotalPages)
+  const eventPageStart = (eventCurrentPage - 1) * eventPageSize
 
   return (
     <section>
@@ -148,11 +182,12 @@ export function History() {
                 <option value="">전체</option>
                 <option value="ok">정상</option>
                 <option value="fail">실패</option>
-                <option value="insufficient_history">이력 부족</option>
               </select>
             </label>
             <span className="run-meta">
-              {snaps.length} / {snapsTotal}건 표시
+              {snapsTotal === 0
+                ? '0 건'
+                : `${snapPageStart + 1}–${Math.min(snapPageStart + snapPageSize, snapsTotal)} / ${snapsTotal.toLocaleString()} 건`}
             </span>
           </div>
           <div className="table-scroll">
@@ -217,6 +252,58 @@ export function History() {
             </tbody>
           </table>
           </div>
+          <div className="pagination">
+            <label className="filter-field">
+              <span>페이지 크기</span>
+              <select
+                value={snapPageSize}
+                onChange={(e) => setSnapPageSize(Number(e.target.value))}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setSnapPage(1)}
+                disabled={snapCurrentPage <= 1 || busy}
+              >
+                처음
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setSnapPage((p) => Math.max(1, p - 1))}
+                disabled={snapCurrentPage <= 1 || busy}
+              >
+                이전
+              </button>
+              <span className="page-indicator">
+                {snapCurrentPage} / {snapTotalPages}
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setSnapPage((p) => Math.min(snapTotalPages, p + 1))}
+                disabled={snapCurrentPage >= snapTotalPages || busy}
+              >
+                다음
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setSnapPage(snapTotalPages)}
+                disabled={snapCurrentPage >= snapTotalPages || busy}
+              >
+                마지막
+              </button>
+            </div>
+          </div>
         </>
       ) : (
         <>
@@ -256,7 +343,9 @@ export function History() {
               </select>
             </label>
             <span className="run-meta">
-              {events.length} / {eventsTotal}건 표시
+              {eventsTotal === 0
+                ? '0 건'
+                : `${eventPageStart + 1}–${Math.min(eventPageStart + eventPageSize, eventsTotal)} / ${eventsTotal.toLocaleString()} 건`}
             </span>
           </div>
           <div className="table-scroll">
@@ -266,7 +355,24 @@ export function History() {
                 <th>발송 시각</th>
                 <th>트리거</th>
                 <th>채널</th>
-                <th>상태</th>
+                <th>
+                  상태{' '}
+                  <span className="info-tip" tabIndex={0}>
+                    <span className="info-icon" aria-hidden="true">
+                      ⓘ
+                    </span>
+                    <span className="info-tip-body" role="tooltip">
+                      <strong>상태 의미</strong>
+                      <ul>
+                        {EVENT_STATUS_HELP.map((item) => (
+                          <li key={item.label}>
+                            <code>{item.label}</code> — {item.desc}
+                          </li>
+                        ))}
+                      </ul>
+                    </span>
+                  </span>
+                </th>
                 <th>요약</th>
                 <th>오류</th>
               </tr>
@@ -303,6 +409,58 @@ export function History() {
               ))}
             </tbody>
           </table>
+          </div>
+          <div className="pagination">
+            <label className="filter-field">
+              <span>페이지 크기</span>
+              <select
+                value={eventPageSize}
+                onChange={(e) => setEventPageSize(Number(e.target.value))}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setEventPage(1)}
+                disabled={eventCurrentPage <= 1 || busy}
+              >
+                처음
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setEventPage((p) => Math.max(1, p - 1))}
+                disabled={eventCurrentPage <= 1 || busy}
+              >
+                이전
+              </button>
+              <span className="page-indicator">
+                {eventCurrentPage} / {eventTotalPages}
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setEventPage((p) => Math.min(eventTotalPages, p + 1))}
+                disabled={eventCurrentPage >= eventTotalPages || busy}
+              >
+                다음
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setEventPage(eventTotalPages)}
+                disabled={eventCurrentPage >= eventTotalPages || busy}
+              >
+                마지막
+              </button>
+            </div>
           </div>
         </>
       )}
