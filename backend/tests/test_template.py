@@ -198,6 +198,16 @@ def test_teams_card_fail_container_includes_project_and_batch_time() -> None:
     assert "07:00" in flat
 
 
+def test_teams_card_uses_full_width_for_teams() -> None:
+    """msteams.width=Full 이 설정되어야 채팅창 폭에 맞춰 카드가 확장됨."""
+    rows = [_row("fail", failure_reasons=["x"])]
+    card = build_teams_card(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=rows
+    )
+    content = card["attachments"][0]["content"]
+    assert content.get("msteams", {}).get("width") == "Full"
+
+
 def test_teams_card_includes_delta_facts() -> None:
     row = _row(
         "fail",

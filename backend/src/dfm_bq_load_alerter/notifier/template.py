@@ -462,6 +462,9 @@ def build_teams_card(
                     "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                     "type": "AdaptiveCard",
                     "version": "1.5",
+                    # Teams 전용 확장: 채팅창 폭에 맞춰 카드 전체 폭으로 렌더.
+                    # 기본 stage 폭(~520px) 에서는 ColumnSet 이 좁아 보이는 문제 회피.
+                    "msteams": {"width": "Full"},
                     "body": body,
                 },
             }
