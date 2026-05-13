@@ -46,18 +46,30 @@ def is_skip_for_monthly(
     return today.day != batch_day_of_month
 
 
-def is_within_buffer(now: datetime, batch_time: time, buffer_minutes: int) -> bool:
-    """Return True when the current KST clock is still inside the buffer window.
+def buffer_window(
+    now: datetime, batch_time: time, buffer_minutes: int
+) -> tuple[datetime, datetime]:
+    """Return today's symmetric buffer window in KST: ``[start, end]``.
 
-    Window end = `batch_time + buffer_minutes` (today, KST). A pre-window-end
-    check should not flag "not_updated_today" as a failure — the load may
-    legitimately arrive any moment.
+    Window = ``[batch_time - buffer_minutes, batch_time + buffer_minutes]``,
+    anchored to ``now`` 의 KST 달력 날짜. 적재가 이 구간 안에서 일어나야
+    "정상 적재"로 간주된다 (엄격 해석).
     """
-    kst_now = now.astimezone(KST)
-    today = kst_now.date()
-    window_start = datetime.combine(today, batch_time, tzinfo=KST)
-    window_end = window_start + timedelta(minutes=buffer_minutes)
-    return kst_now < window_end
+    today = now.astimezone(KST).date()
+    anchor = datetime.combine(today, batch_time, tzinfo=KST)
+    delta = timedelta(minutes=buffer_minutes)
+    return anchor - delta, anchor + delta
+
+
+def is_within_buffer(now: datetime, batch_time: time, buffer_minutes: int) -> bool:
+    """Return True while the current KST clock is still before the window end.
+
+    Window end = ``batch_time + buffer_minutes`` (today, KST) — the latest
+    moment a load is still expected. Pre-window-end 검증은 적재가 곧 도착할
+    가능성이 있으므로 FAIL 로 단정하지 않는다.
+    """
+    _, window_end = buffer_window(now, batch_time, buffer_minutes)
+    return now.astimezone(KST) < window_end
 
 
 def evaluate(
@@ -74,9 +86,14 @@ def evaluate(
     """Evaluate a single check against the configured failure conditions.
 
     FAIL 조건 (OR):
-    - `cond_buffer_load`: 윈도우(batch_time + buffer_minutes) 밖에서
-      미적재(last_modified 없음/오늘이 아님) → FAIL. 그리고 row_count==0 이면
-      윈도우와 무관하게 FAIL.
+    - `cond_buffer_load`: 윈도우 ``[batch_time - buffer, batch_time + buffer]``
+      (KST, 엄격 해석) 기준. 윈도우 종료 이후 검증 시점에 ``last_modified`` 가
+      윈도우 안에 있지 않으면 FAIL ("윈도우 내 미적재" / "최종 업데이트 시각
+      없음"). ``row_count == 0`` 은 윈도우와 무관하게 FAIL.
+      ``batch_time`` / ``buffer_minutes`` 가 None 이면 정책 미설정 폴백으로
+      "오늘 미적재" 기준을 사용한다. cond_buffer_load 가 True 인 테이블은
+      schema 레벨에서 batch_time 이 NOT NULL 이므로 이 폴백은 정책 미설정
+      테스트/외부 호출용이다.
     - `cond_delta_rowcount`: |today - baseline| / baseline
       >= delta_threshold_percent / 100. Baseline 은 daily=어제, monthly=전월.
       Baseline 이 없으면 증감률 비교를 생략하고 사유에 그 사실을 남긴다(FAIL 아님).
@@ -86,22 +103,25 @@ def evaluate(
     actual = now if now is not None else datetime.now(tz=KST)
     today = today_kst(actual)
 
-    # 버퍼 시간 내 여부
-    in_buffer = (
-        batch_time is not None
-        and buffer_minutes is not None
-        and is_within_buffer(actual, batch_time, buffer_minutes)
-    )
-
     if cond_buffer_load:
-        if metadata.last_modified is None and not in_buffer:
-            reasons.append("최종 업데이트 시각 없음")
-        elif (
-            metadata.last_modified is not None
-            and metadata.last_modified.astimezone(KST).date() != today
-            and not in_buffer
-        ):
-            reasons.append("오늘 미적재")
+        if batch_time is not None and buffer_minutes is not None:
+            window_start, window_end = buffer_window(
+                actual, batch_time, buffer_minutes
+            )
+            in_buffer = actual.astimezone(KST) < window_end
+            if not in_buffer:
+                if metadata.last_modified is None:
+                    reasons.append("최종 업데이트 시각 없음")
+                else:
+                    lm_kst = metadata.last_modified.astimezone(KST)
+                    if not (window_start <= lm_kst <= window_end):
+                        reasons.append("윈도우 내 미적재")
+        else:
+            # 정책 미설정 폴백: 윈도우 계산이 불가하므로 "오늘 적재 여부" 로 판정.
+            if metadata.last_modified is None:
+                reasons.append("최종 업데이트 시각 없음")
+            elif metadata.last_modified.astimezone(KST).date() != today:
+                reasons.append("오늘 미적재")
 
         if metadata.row_count == 0:
             reasons.append("row count 0")

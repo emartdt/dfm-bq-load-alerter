@@ -420,7 +420,10 @@ export function Tables() {
             </select>
           </label>
           <label className="field">
-            <span>배치 시각 (KST)</span>
+            <span>
+              배치 시각 (KST){' '}
+              <span className="field-hint">버퍼 조건 사용 시 필수</span>
+            </span>
             <input
               type="time"
               required
@@ -430,7 +433,10 @@ export function Tables() {
           </label>
           <label className="field">
             <span>
-              버퍼 (분) <span className="field-hint">빈 값 = 정책 기본</span>
+              버퍼 (분){' '}
+              <span className="field-hint">
+                윈도우 = [배치 − 버퍼, 배치 + 버퍼] · 빈 값 = 정책 기본
+              </span>
             </span>
             <input
               type="number"
@@ -514,6 +520,7 @@ export function Tables() {
                 }
               />
               버퍼 시간 내 적재 + ROW COUNT = 0
+              <span className="field-hint"> · 배치 시각 필수</span>
             </label>
             <label className="inline">
               <input

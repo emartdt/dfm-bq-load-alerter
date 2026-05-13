@@ -89,3 +89,101 @@ def test_row_count_가_0이면_버퍼_안이라도_FAIL이다() -> None:
     )
     assert result.status == CheckStatus.fail
     assert "row count 0" in result.failure_reasons
+
+
+# 엄격 해석 A: 윈도우 = [batch - buffer, batch + buffer]. 적재 시각이 윈도우
+# 안에 있어야 정상. 윈도우 밖(이전/이후)에 적재되어도 FAIL.
+TIGHT_BATCH = time(5, 0)
+TIGHT_BUFFER = 30  # 윈도우 = [04:30, 05:30] KST.
+
+
+def test_적재가_윈도우_시작_전이면_FAIL이며_사유는_윈도우_내_미적재이다() -> None:
+    """batch=05:00, buffer=30 → 윈도우[04:30, 05:30]. 03:00 적재 → 윈도우 밖."""
+    now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
+    loaded = datetime(2026, 5, 7, 3, 0, tzinfo=KST)
+    md = _메타(last_modified=loaded, row_count=1000)
+    result = evaluate(
+        md,
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=TIGHT_BATCH,
+        buffer_minutes=TIGHT_BUFFER,
+        now=now,
+    )
+    assert result.status == CheckStatus.fail
+    assert "윈도우 내 미적재" in result.failure_reasons
+    # 강조: 같은 입력에서 구(舊) 사유는 발화하지 않는다.
+    assert "오늘 미적재" not in result.failure_reasons
+
+
+def test_적재가_윈도우_종료_이후면_FAIL이다() -> None:
+    """윈도우 종료(05:30) 이후 적재(05:45)는 엄격 해석으로 FAIL."""
+    now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
+    loaded = datetime(2026, 5, 7, 5, 45, tzinfo=KST)
+    md = _메타(last_modified=loaded, row_count=1000)
+    result = evaluate(
+        md,
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=TIGHT_BATCH,
+        buffer_minutes=TIGHT_BUFFER,
+        now=now,
+    )
+    assert result.status == CheckStatus.fail
+    assert "윈도우 내 미적재" in result.failure_reasons
+
+
+def test_적재가_윈도우_안이면_OK이다() -> None:
+    """윈도우[04:30, 05:30] 안 적재(05:15) → 정상."""
+    now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
+    loaded = datetime(2026, 5, 7, 5, 15, tzinfo=KST)
+    md = _메타(last_modified=loaded, row_count=1000)
+    result = evaluate(
+        md,
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=TIGHT_BATCH,
+        buffer_minutes=TIGHT_BUFFER,
+        now=now,
+    )
+    assert result.status == CheckStatus.ok
+    assert "윈도우 내 미적재" not in result.failure_reasons
+
+
+def test_윈도우_경계값은_포함이다() -> None:
+    """경계(04:30, 05:30) 정확히 적재된 경우는 윈도우 안으로 인정."""
+    now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
+    md_start = _메타(
+        last_modified=datetime(2026, 5, 7, 4, 30, tzinfo=KST), row_count=1000
+    )
+    md_end = _메타(
+        last_modified=datetime(2026, 5, 7, 5, 30, tzinfo=KST), row_count=1000
+    )
+    for md in (md_start, md_end):
+        result = evaluate(
+            md,
+            yesterday_row_count=1000,
+            delta_threshold_percent=25.0,
+            batch_time=TIGHT_BATCH,
+            buffer_minutes=TIGHT_BUFFER,
+            now=now,
+        )
+        assert result.status == CheckStatus.ok, (
+            f"경계 적재가 OK 여야 함: last_modified={md.last_modified}"
+        )
+
+
+def test_윈도우_안에서는_과거_시각_적재여도_FAIL이_아니다() -> None:
+    """윈도우 종료(05:30) 전이라면 적재가 어디든 'still in flight' 로 본다."""
+    now = datetime(2026, 5, 7, 5, 0, tzinfo=KST)
+    loaded = datetime(2026, 5, 7, 3, 0, tzinfo=KST)
+    md = _메타(last_modified=loaded, row_count=1000)
+    result = evaluate(
+        md,
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=TIGHT_BATCH,
+        buffer_minutes=TIGHT_BUFFER,
+        now=now,
+    )
+    assert "윈도우 내 미적재" not in result.failure_reasons
