@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 class SnapshotItem(BaseModel):
     id: int
     table_id: int
+    project_id: str | None
     dataset: str
     table_name: str
     checked_at: datetime
@@ -86,15 +87,20 @@ async def list_snapshots(
 
     base = base.order_by(CheckSnapshot.checked_at.desc()).limit(limit).offset(offset)
 
-    rows = (await session.execute(base.add_columns(Table.dataset, Table.table_name))).all()
+    rows = (
+        await session.execute(
+            base.add_columns(Table.project_id, Table.dataset, Table.table_name)
+        )
+    ).all()
     total = (await session.execute(count_stmt)).scalar_one()
 
     items: list[SnapshotItem] = []
-    for snapshot, dataset, table_name in rows:
+    for snapshot, project_id, dataset, table_name in rows:
         items.append(
             SnapshotItem(
                 id=snapshot.id,
                 table_id=snapshot.table_id,
+                project_id=project_id,
                 dataset=dataset,
                 table_name=table_name,
                 checked_at=snapshot.checked_at,

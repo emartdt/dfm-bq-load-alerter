@@ -42,10 +42,6 @@ const SNAPSHOT_STATUS_HELP: Array<{ label: string; desc: string }> = [
     label: 'fail',
     desc: '실패 사유 발견 — window 내 미적재 / row_count=0 / 전일 대비 증감률 임계치 초과 등 (사유 컬럼 참고).',
   },
-  {
-    label: 'insufficient_history',
-    desc: '전일 대비 증감률 체크가 켜져 있으나 비교할 어제 row_count 이력이 없어 판정 보류 (다른 실패가 없을 때만 부여, 이력이 쌓이면 자연 해소).',
-  },
 ]
 
 function describeError(err: unknown): string {
@@ -164,7 +160,7 @@ export function History() {
             <thead>
               <tr>
                 <th>점검 시각</th>
-                <th>데이터셋.테이블</th>
+                <th>프로젝트.데이터셋.테이블</th>
                 <th>
                   상태{' '}
                   <span className="info-tip" tabIndex={0}>
@@ -200,7 +196,7 @@ export function History() {
                 <tr key={s.id}>
                   <td className="muted-cell">{new Date(s.checked_at).toLocaleString()}</td>
                   <td>
-                    {s.dataset}.{s.table_name}
+                    {s.project_id ?? '(기본)'}.{s.dataset}.{s.table_name}
                   </td>
                   <td>
                     <span className={`status status-${s.status}`}>

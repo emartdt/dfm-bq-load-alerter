@@ -8,6 +8,7 @@ export type TriggerKind = 'check' | 'report' | 'ack'
 export interface SnapshotItem {
   id: number
   table_id: number
+  project_id: string | null
   dataset: string
   table_name: string
   checked_at: string
