@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dfm_bq_load_alerter.auth import require_admin
 from dfm_bq_load_alerter.db.models import AlertRecipient
 from dfm_bq_load_alerter.db.session import get_session
+from dfm_bq_load_alerter.notifier.template import ALERT_SUBJECT_PREFIX
 from dfm_bq_load_alerter.notifier.email import (
     EmailNotConfiguredError,
     send_email,
@@ -147,11 +148,11 @@ async def test_recipient(
     if recipient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     now_iso = datetime.now().isoformat(timespec="seconds")
-    subject = "[DFM Alert] 수신자 연결 테스트"
+    subject = f"{ALERT_SUBJECT_PREFIX} 수신자 연결 테스트"
     html = (
         "<!DOCTYPE html><html lang=\"ko\"><body "
         "style=\"font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;\">"
-        "<h2 style=\"margin-bottom:0.25rem;\">[DFM Alert] 수신자 연결 테스트</h2>"
+        f"<h2 style=\"margin-bottom:0.25rem;\">{ALERT_SUBJECT_PREFIX} 수신자 연결 테스트</h2>"
         f"<p style=\"color:#888;margin-top:0;\">recipient={recipient.email} · {now_iso}</p>"
         "<p>이 메일은 DFM BQ Load Alerter 수신자 등록 검증용으로 발송되었습니다.</p>"
         "<hr><p style=\"font-size:12px;color:#888;\">dfm-bq-load-alerter</p>"

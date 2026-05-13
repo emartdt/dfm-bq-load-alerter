@@ -89,6 +89,12 @@ def _collect_types(items) -> set[str]:
     return found
 
 
+def _headline(card: dict) -> dict:
+    """제목(큰 TextBlock) 노드를 반환 — 트리거 라벨 다음에 오는 Large+Bolder 텍스트."""
+    body = card["attachments"][0]["content"]["body"]
+    return next(b for b in body if b.get("size") == "Large" and b.get("weight") == "Bolder")
+
+
 def test_teams_card_structure_minimum() -> None:
     rows = [_row("fail", failure_reasons=["delta_exceeded"])]
     card = build_teams_card(
@@ -100,7 +106,8 @@ def test_teams_card_structure_minimum() -> None:
     body = attachment["content"]["body"]
     body_kinds = _collect_types(body)
     assert "TextBlock" in body_kinds
-    assert "FactSet" in body_kinds  # 카드 컨테이너 안에 위치
+    assert "Container" in body_kinds
+    assert "ColumnSet" in body_kinds  # 이전/금일 비교 단
 
 
 def test_teams_card_attention_color_when_fails() -> None:
@@ -108,8 +115,7 @@ def test_teams_card_attention_color_when_fails() -> None:
     card = build_teams_card(
         trigger_kind="check", expected=NOW, actual=NOW, rows=rows
     )
-    headline = card["attachments"][0]["content"]["body"][0]
-    assert headline["color"] == "Attention"
+    assert _headline(card)["color"] == "Attention"
 
 
 def test_teams_card_good_color_when_no_fails() -> None:
@@ -117,8 +123,7 @@ def test_teams_card_good_color_when_no_fails() -> None:
     card = build_teams_card(
         trigger_kind="report", expected=NOW, actual=NOW, rows=rows
     )
-    headline = card["attachments"][0]["content"]["body"][0]
-    assert headline["color"] == "Good"
+    assert _headline(card)["color"] == "Good"
 
 
 def test_email_html_includes_project_dataset_table_in_card() -> None:
@@ -196,6 +201,8 @@ def test_teams_card_fail_container_includes_project_and_batch_time() -> None:
     flat = str(container)
     assert "bw-prj-001.bw.PZEVENTID" in flat
     assert "07:00" in flat
+    # 이메일과 동일하게 '배치 시각' 라벨이 카드 메타 라인에 포함되어야 한다.
+    assert "배치 시각" in flat
 
 
 def test_teams_card_uses_full_width_for_teams() -> None:
@@ -208,7 +215,8 @@ def test_teams_card_uses_full_width_for_teams() -> None:
     assert content.get("msteams", {}).get("width") == "Full"
 
 
-def test_teams_card_includes_delta_facts() -> None:
+def test_teams_card_includes_delta_line() -> None:
+    """이메일과 동일하게 Δrows · Δ% 가 한 줄에 결합되어 노출되어야 한다."""
     row = _row(
         "fail",
         yesterday_row_count=1000,
@@ -221,10 +229,7 @@ def test_teams_card_includes_delta_facts() -> None:
     )
     body = card["attachments"][0]["content"]["body"]
     container = next(b for b in body if b.get("type") == "Container")
-    fact_set = next(item for item in container["items"] if item["type"] == "FactSet")
-    titles = [f["title"] for f in fact_set["facts"]]
-    values = [f["value"] for f in fact_set["facts"]]
-    assert "증감 rows" in titles
-    assert "증감 %" in titles
-    assert "-100" in values
-    assert "-10.00%" in values
+    flat = " ".join(item.get("text", "") for item in container["items"])
+    assert "-100" in flat
+    assert "-10.00%" in flat
+    assert "증감" in flat

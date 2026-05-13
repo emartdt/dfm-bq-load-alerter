@@ -16,6 +16,9 @@ from jinja2 import Environment, select_autoescape
 
 KST = ZoneInfo("Asia/Seoul")
 
+ALERT_SUBJECT_PREFIX = "[DFM 빅쿼리 적재 알리미]"
+"""모든 알람/테스트 메시지의 제목·본문 헤더에 공통으로 붙는 접두어."""
+
 _env = Environment(autoescape=select_autoescape(["html", "xml"]))
 
 
@@ -221,8 +224,8 @@ def _bucket_rows(
 
 def build_email_subject(*, trigger_kind: str, fail_count: int, expected: datetime) -> str:
     if trigger_kind == "report":
-        return f"[DFM Alert] 일일 리포트 ({_to_kst(expected)})"
-    return f"[DFM Alert] 점검 실패 {fail_count}건 ({_to_kst(expected)})"
+        return f"{ALERT_SUBJECT_PREFIX} 일일 리포트 ({_to_kst(expected)})"
+    return f"{ALERT_SUBJECT_PREFIX} 점검 실패 {fail_count}건 ({_to_kst(expected)})"
 
 
 def build_email_html(
@@ -332,15 +335,42 @@ def _card_compare_columns(r: TemplateRow) -> dict[str, Any]:
     }
 
 
-def _card_delta_block(r: TemplateRow) -> dict[str, Any]:
+def _card_meta_line(r: TemplateRow) -> dict[str, Any]:
+    """이메일의 '배치 시각 HH:MM · 점검 윈도우 기준 ... KST' 라인과 동치."""
+    parts = [f"배치 시각 **{_fmt_time(r.batch_time)}**"]
+    if r.expected_check_time is not None:
+        parts.append(f"점검 윈도우 기준 {_to_kst(r.expected_check_time)} KST")
     return {
-        "type": "FactSet",
+        "type": "TextBlock",
+        "text": " · ".join(parts),
+        "isSubtle": True,
+        "size": "Small",
         "spacing": "Small",
-        "facts": [
-            {"title": "배치 시각", "value": _fmt_time(r.batch_time)},
-            {"title": "증감 rows", "value": _signed_count(r.delta_count)},
-            {"title": "증감 %", "value": _signed_percent(r.delta_percent_vs_yesterday)},
-        ],
+        "wrap": True,
+    }
+
+
+def _card_delta_line(r: TemplateRow) -> dict[str, Any]:
+    """이메일의 '증감 Δ ±N rows · ±X.XX%' 단일 박스에 대응하는 단일 라인."""
+    p = r.delta_percent_vs_yesterday
+    if p is None:
+        color = "Default"
+    elif p > 0:
+        color = "Good"
+    elif p < 0:
+        color = "Attention"
+    else:
+        color = "Default"
+    return {
+        "type": "TextBlock",
+        "text": (
+            f"증감  **Δ {_signed_count(r.delta_count)} rows · "
+            f"{_signed_percent(r.delta_percent_vs_yesterday)}**"
+        ),
+        "color": color,
+        "weight": "Bolder",
+        "spacing": "Small",
+        "wrap": True,
     }
 
 
@@ -352,15 +382,18 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
     )
     items: list[dict[str, Any]] = [
         _card_title_columns(r, status),
+        _card_meta_line(r),
         _card_compare_columns(r),
-        _card_delta_block(r),
+        _card_delta_line(r),
     ]
     if r.failure_reasons:
         items.append(
             {
                 "type": "TextBlock",
-                "text": "⚠ " + ", ".join(r.failure_reasons),
+                "text": "  ".join(f"⚠ {reason}" for reason in r.failure_reasons),
                 "color": "Attention",
+                "weight": "Bolder",
+                "size": "Small",
                 "wrap": True,
                 "spacing": "Small",
             }
@@ -371,6 +404,7 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
                 "type": "TextBlock",
                 "text": f"📝 {r.note}",
                 "isSubtle": True,
+                "size": "Small",
                 "wrap": True,
                 "spacing": "Small",
             }
@@ -384,16 +418,61 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
     }
 
 
+def _pill_columns(
+    fail_count: int, insufficient_count: int, ok_count: int, trigger_kind: str
+) -> dict[str, Any] | None:
+    """이메일 헤더의 상태 pill 행과 동치 — Container.style 로 색상을 표현한다."""
+    cols: list[dict[str, Any]] = []
+
+    def _pill(label: str, count: int, style: str) -> dict[str, Any]:
+        return {
+            "type": "Column",
+            "width": "auto",
+            "style": style,
+            "items": [
+                {
+                    "type": "TextBlock",
+                    "text": f"{label}  {count}",
+                    "weight": "Bolder",
+                    "size": "Small",
+                    "spacing": "None",
+                }
+            ],
+        }
+
+    if fail_count:
+        cols.append(_pill("FAIL", fail_count, "attention"))
+    if insufficient_count:
+        cols.append(_pill("INSUFFICIENT", insufficient_count, "warning"))
+    if ok_count and trigger_kind == "report":
+        cols.append(_pill("OK", ok_count, "good"))
+    if not cols:
+        return None
+    return {"type": "ColumnSet", "spacing": "Small", "columns": cols}
+
+
 def build_teams_card(
     *, trigger_kind: str, expected: datetime, actual: datetime, rows: list[TemplateRow]
 ) -> dict[str, Any]:
-    """Build an Adaptive Card v1.5 payload suitable for an Incoming Webhook."""
+    """Build an Adaptive Card v1.5 payload suitable for an Incoming Webhook.
+
+    레이아웃은 이메일 HTML 과 동치 — 헤더(트리거 라벨 + 제목 + 예정/실측 KST + 상태 pill)
+    이후 카드별 (제목 + 상태 + 배치 메타 라인 + 2단 비교 + 단일 증감 라인 + 사유/노트).
+    """
     fail, insufficient, ok = _bucket_rows(rows)
     summary = build_email_subject(
         trigger_kind=trigger_kind, fail_count=len(fail), expected=expected
     )
+    trigger_label = "일일 리포트" if trigger_kind == "report" else "점검 알림"
 
     body: list[dict[str, Any]] = [
+        {
+            "type": "TextBlock",
+            "text": trigger_label,
+            "isSubtle": True,
+            "size": "Small",
+            "spacing": "None",
+        },
         {
             "type": "TextBlock",
             "size": "Large",
@@ -401,18 +480,20 @@ def build_teams_card(
             "text": summary,
             "color": "Attention" if fail else "Good",
             "wrap": True,
+            "spacing": "Small",
         },
         {
             "type": "TextBlock",
             "isSubtle": True,
-            "spacing": "None",
-            "text": (
-                f"trigger={trigger_kind} · expected={_to_kst(expected)}"
-                f" · actual={_to_kst(actual)}"
-            ),
+            "size": "Small",
+            "spacing": "Small",
+            "text": f"예정 점검 {_to_kst(expected)} KST · 실측 점검 {_to_kst(actual)} KST",
             "wrap": True,
         },
     ]
+    pill_row = _pill_columns(len(fail), len(insufficient), len(ok), trigger_kind)
+    if pill_row is not None:
+        body.append(pill_row)
 
     if fail:
         body.append(
