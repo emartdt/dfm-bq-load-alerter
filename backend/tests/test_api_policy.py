@@ -25,6 +25,7 @@ def test_history_router_registered() -> None:
     assert "/api/history/events" in paths
     assert "/api/history/stats/daily" in paths
     assert "/api/history/stats/monthly" in paths
+    assert "/api/history/stats/table-success-rate" in paths
 
 
 def test_policy_router_registered() -> None:

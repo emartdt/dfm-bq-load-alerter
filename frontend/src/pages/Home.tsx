@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { BarChart, type BarChartItem } from '../components/BarChart'
 import { LineChart } from '../components/LineChart'
 import {
   getDailyStats,
   getMonthlyStats,
+  getTableSuccessRate,
   type DailyStatPoint,
   type MonthlyStatPoint,
+  type TableSuccessRateRow,
 } from '../api/stats'
 
 type HealthStatus = 'unknown' | 'ok' | 'error'
@@ -32,6 +35,7 @@ export function Home() {
   const [version, setVersion] = useState<string>('')
   const [daily, setDaily] = useState<DailyStatPoint[] | null>(null)
   const [monthly, setMonthly] = useState<MonthlyStatPoint[] | null>(null)
+  const [rates, setRates] = useState<TableSuccessRateRow[] | null>(null)
   const [statsError, setStatsError] = useState<string>('')
 
   useEffect(() => {
@@ -49,13 +53,18 @@ export function Home() {
     let cancelled = false
     void (async () => {
       try {
-        const [d, m] = await Promise.all([
+        const [d, m, r] = await Promise.all([
           getDailyStats(DAILY_WINDOW_DAYS),
           getMonthlyStats(MONTHLY_WINDOW_MONTHS),
+          getTableSuccessRate({
+            days: DAILY_WINDOW_DAYS,
+            months: MONTHLY_WINDOW_MONTHS,
+          }),
         ])
         if (cancelled) return
         setDaily(d.points)
         setMonthly(m.points)
+        setRates(r.rows)
       } catch (err) {
         if (cancelled) return
         setStatsError(err instanceof Error ? err.message : String(err))
@@ -74,6 +83,19 @@ export function Home() {
     () => buildMonthlySeries(monthly ?? [], MONTHLY_WINDOW_MONTHS),
     [monthly],
   )
+
+  const rateItems = useMemo<BarChartItem[]>(() => {
+    if (!rates) return []
+    return [...rates]
+      .sort((a, b) => a.success_rate - b.success_rate || a.table_name.localeCompare(b.table_name))
+      .map((r) => ({
+        key: r.table_id,
+        label: `${r.dataset}.${r.table_name}`,
+        value: r.success_rate,
+        secondary: `${r.ok_count}/${r.total}`,
+        tag: r.frequency,
+      }))
+  }, [rates])
 
   return (
     <section>
@@ -128,6 +150,19 @@ export function Home() {
             height={260}
             yLabel="월별 배치 성공/실패"
           />
+        )}
+      </div>
+
+      <div className="card">
+        <h2 className="card-title">테이블별 성공률</h2>
+        <p className="card-subtitle">
+          daily 최근 {DAILY_WINDOW_DAYS}일 · monthly 최근 {MONTHLY_WINDOW_MONTHS}개월
+          ok/(ok+fail) 비율. 낮은 순서로 정렬.
+        </p>
+        {rates === null && !statsError ? (
+          <div className="chart-empty" style={{ height: 160 }}>로딩 중…</div>
+        ) : (
+          <BarChart items={rateItems} emptyMessage="집계 가능한 스냅샷이 없습니다." />
         )}
       </div>
     </section>

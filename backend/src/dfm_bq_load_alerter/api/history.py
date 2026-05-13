@@ -22,6 +22,7 @@ from dfm_bq_load_alerter.db.models import (
     CheckSnapshot,
     CheckStatus,
     EventStatus,
+    Frequency,
     Table,
     TriggerKind,
 )
@@ -280,3 +281,113 @@ async def monthly_stats(
         for row in rows
     ]
     return MonthlyStatsResponse(points=points)
+
+
+class TableSuccessRateRow(BaseModel):
+    table_id: int
+    dataset: str
+    table_name: str
+    frequency: Frequency
+    ok_count: int
+    fail_count: int
+    total: int
+    success_rate: float  # 0.0 ~ 1.0
+
+
+class TableSuccessRateResponse(BaseModel):
+    days: int
+    months: int
+    rows: list[TableSuccessRateRow]
+
+
+# 테이블별 성공률:
+#   daily 테이블은 일자 단위로, monthly 테이블은 월 단위로 같은 슬롯의
+#   최신 스냅샷 1건만 카운트한 뒤 (ok / (ok+fail)) 비율을 산출.
+#   윈도우 내 ok/fail 스냅샷이 전혀 없는 테이블은 제외.
+_TABLE_SUCCESS_RATE_SQL = text(
+    """
+    WITH daily_latest AS (
+        SELECT DISTINCT ON (cs.table_id, (cs.checked_at AT TIME ZONE 'Asia/Seoul')::date)
+            cs.table_id,
+            cs.status
+        FROM check_snapshots cs
+        JOIN tables t ON t.id = cs.table_id
+        WHERE t.frequency = 'daily'
+          AND cs.checked_at >= (now() AT TIME ZONE 'Asia/Seoul')::date - make_interval(days => :days)
+        ORDER BY
+            cs.table_id,
+            (cs.checked_at AT TIME ZONE 'Asia/Seoul')::date,
+            cs.checked_at DESC
+    ),
+    monthly_latest AS (
+        SELECT DISTINCT ON (
+            cs.table_id,
+            date_trunc('month', cs.checked_at AT TIME ZONE 'Asia/Seoul')
+        )
+            cs.table_id,
+            cs.status
+        FROM check_snapshots cs
+        JOIN tables t ON t.id = cs.table_id
+        WHERE t.frequency = 'monthly'
+          AND cs.checked_at >= date_trunc(
+              'month',
+              (now() AT TIME ZONE 'Asia/Seoul') - make_interval(months => :months - 1)
+          )
+        ORDER BY
+            cs.table_id,
+            date_trunc('month', cs.checked_at AT TIME ZONE 'Asia/Seoul'),
+            cs.checked_at DESC
+    ),
+    combined AS (
+        SELECT * FROM daily_latest
+        UNION ALL
+        SELECT * FROM monthly_latest
+    )
+    SELECT
+        t.id AS table_id,
+        t.dataset,
+        t.table_name,
+        t.frequency,
+        COALESCE(SUM(CASE WHEN c.status = 'ok' THEN 1 ELSE 0 END), 0)::int AS ok_count,
+        COALESCE(SUM(CASE WHEN c.status = 'fail' THEN 1 ELSE 0 END), 0)::int AS fail_count
+    FROM tables t
+    LEFT JOIN combined c ON c.table_id = t.id
+    GROUP BY t.id, t.dataset, t.table_name, t.frequency
+    HAVING COALESCE(SUM(CASE WHEN c.status IN ('ok', 'fail') THEN 1 ELSE 0 END), 0) > 0
+    ORDER BY t.dataset, t.table_name
+    """
+)
+
+
+@router.get("/stats/table-success-rate", response_model=TableSuccessRateResponse)
+async def table_success_rate(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _principal: Annotated[dict, Depends(require_admin)],
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+    months: Annotated[int, Query(ge=1, le=36)] = 12,
+) -> TableSuccessRateResponse:
+    """테이블별 성공률 (윈도우 내 ok / (ok+fail))."""
+    rows = (
+        await session.execute(
+            _TABLE_SUCCESS_RATE_SQL, {"days": days, "months": months}
+        )
+    ).all()
+    items: list[TableSuccessRateRow] = []
+    for row in rows:
+        ok = int(row.ok_count or 0)
+        fail = int(row.fail_count or 0)
+        total = ok + fail
+        rate = ok / total if total > 0 else 0.0
+        items.append(
+            TableSuccessRateRow(
+                table_id=row.table_id,
+                dataset=row.dataset,
+                table_name=row.table_name,
+                frequency=Frequency(row.frequency),
+                ok_count=ok,
+                fail_count=fail,
+                total=total,
+                success_rate=round(rate, 4),
+            )
+        )
+    return TableSuccessRateResponse(days=days, months=months, rows=items)
