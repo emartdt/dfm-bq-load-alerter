@@ -7,12 +7,12 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dfm_bq_load_alerter.auth import require_admin
@@ -154,3 +154,129 @@ async def list_events(
         ],
         total=total,
     )
+
+
+class DailyStatPoint(BaseModel):
+    bucket: date
+    ok_count: int
+    fail_count: int
+
+
+class DailyStatsResponse(BaseModel):
+    points: list[DailyStatPoint]
+
+
+class MonthlyStatPoint(BaseModel):
+    bucket: str  # "YYYY-MM"
+    ok_count: int
+    fail_count: int
+
+
+class MonthlyStatsResponse(BaseModel):
+    points: list[MonthlyStatPoint]
+
+
+# 동일 (table, 슬롯) 에서 가장 최근 스냅샷 1건만 집계 — 같은 날(혹은 같은 달)에
+# 여러 체크가 도는 경우 중복 카운트 방지.
+_DAILY_STATS_SQL = text(
+    """
+    WITH latest_per_day AS (
+        SELECT DISTINCT ON (cs.table_id, (cs.checked_at AT TIME ZONE 'Asia/Seoul')::date)
+            cs.table_id,
+            (cs.checked_at AT TIME ZONE 'Asia/Seoul')::date AS bucket,
+            cs.status
+        FROM check_snapshots cs
+        JOIN tables t ON t.id = cs.table_id
+        WHERE t.frequency = 'daily'
+          AND cs.checked_at >= (now() AT TIME ZONE 'Asia/Seoul')::date - make_interval(days => :days)
+        ORDER BY
+            cs.table_id,
+            (cs.checked_at AT TIME ZONE 'Asia/Seoul')::date,
+            cs.checked_at DESC
+    )
+    SELECT
+        bucket,
+        SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok_count,
+        SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) AS fail_count
+    FROM latest_per_day
+    GROUP BY bucket
+    ORDER BY bucket
+    """
+)
+
+_MONTHLY_STATS_SQL = text(
+    """
+    WITH latest_per_month AS (
+        SELECT DISTINCT ON (
+            cs.table_id,
+            date_trunc('month', cs.checked_at AT TIME ZONE 'Asia/Seoul')
+        )
+            cs.table_id,
+            date_trunc('month', cs.checked_at AT TIME ZONE 'Asia/Seoul')::date AS bucket,
+            cs.status
+        FROM check_snapshots cs
+        JOIN tables t ON t.id = cs.table_id
+        WHERE t.frequency = 'monthly'
+          AND cs.checked_at >= date_trunc(
+              'month',
+              (now() AT TIME ZONE 'Asia/Seoul') - make_interval(months => :months - 1)
+          )
+        ORDER BY
+            cs.table_id,
+            date_trunc('month', cs.checked_at AT TIME ZONE 'Asia/Seoul'),
+            cs.checked_at DESC
+    )
+    SELECT
+        bucket,
+        SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok_count,
+        SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) AS fail_count
+    FROM latest_per_month
+    GROUP BY bucket
+    ORDER BY bucket
+    """
+)
+
+
+@router.get("/stats/daily", response_model=DailyStatsResponse)
+async def daily_stats(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _principal: Annotated[dict, Depends(require_admin)],
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> DailyStatsResponse:
+    """daily 적재 테이블의 KST 일자별 성공/실패 카운트.
+
+    같은 (테이블, 일자) 에서 가장 최근 스냅샷 1건만 집계해 동일 슬롯의
+    중복 체크가 카운트에 영향을 주지 않도록 한다.
+    """
+    rows = (await session.execute(_DAILY_STATS_SQL, {"days": days})).all()
+    points = [
+        DailyStatPoint(
+            bucket=row.bucket,
+            ok_count=int(row.ok_count or 0),
+            fail_count=int(row.fail_count or 0),
+        )
+        for row in rows
+    ]
+    return DailyStatsResponse(points=points)
+
+
+@router.get("/stats/monthly", response_model=MonthlyStatsResponse)
+async def monthly_stats(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _principal: Annotated[dict, Depends(require_admin)],
+    months: Annotated[int, Query(ge=1, le=36)] = 12,
+) -> MonthlyStatsResponse:
+    """monthly 적재 테이블의 KST 월별 성공/실패 카운트.
+
+    같은 (테이블, 월) 에서 가장 최근 스냅샷 1건만 집계.
+    """
+    rows = (await session.execute(_MONTHLY_STATS_SQL, {"months": months})).all()
+    points = [
+        MonthlyStatPoint(
+            bucket=row.bucket.strftime("%Y-%m"),
+            ok_count=int(row.ok_count or 0),
+            fail_count=int(row.fail_count or 0),
+        )
+        for row in rows
+    ]
+    return MonthlyStatsResponse(points=points)

@@ -6,6 +6,7 @@ from dfm_bq_load_alerter.notifier.template import (
     build_email_html,
     build_email_subject,
     build_teams_card,
+    build_teams_cards,
 )
 
 KST = ZoneInfo("Asia/Seoul")
@@ -222,6 +223,49 @@ def test_teams_card_fail_container_includes_project_batch_and_buffer() -> None:
     assert "30분" in flat
     assert "점검 시각" in flat
     assert "점검 윈도우 기준" not in flat
+
+
+def test_teams_cards_split_when_payload_exceeds_budget() -> None:
+    """리포트의 OK 행이 많을 때 Teams 페이로드를 ~22KB 이하로 분할해야 한다."""
+    rows = [_row("fail", failure_reasons=["x"], table_name=f"FAIL_{i:02d}") for i in range(2)]
+    rows += [_row("ok", table_name=f"OK_{i:03d}") for i in range(200)]
+    cards = build_teams_cards(
+        trigger_kind="report", expected=NOW, actual=NOW, rows=rows
+    )
+    import json
+    sizes = [len(json.dumps(c, ensure_ascii=False).encode("utf-8")) for c in cards]
+    assert len(cards) > 1, "큰 리포트는 분할되어야 함"
+    assert max(sizes) <= 25_000, f"각 청크가 25KB 이하: sizes={sizes}"
+    # 후속 카드는 (i/N) 표식이 트리거 라벨에 부착되어야 한다.
+    for i, c in enumerate(cards, start=1):
+        body = c["attachments"][0]["content"]["body"]
+        label = next(b for b in body if b.get("size") == "Small")
+        assert f"({i}/{len(cards)})" in label["text"]
+
+
+def test_teams_cards_returns_single_card_when_small() -> None:
+    rows = [_row("fail", failure_reasons=["x"])]
+    cards = build_teams_cards(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=rows
+    )
+    assert len(cards) == 1
+
+
+def test_teams_card_uses_compact_ok_rows_for_report() -> None:
+    """OK 행은 풀 Container 가 아닌 ColumnSet 한 줄로 압축되어야 한다."""
+    rows = [_row("ok", table_name=f"OK_{i}") for i in range(5)]
+    card = build_teams_card(
+        trigger_kind="report", expected=NOW, actual=NOW, rows=rows
+    )
+    body = card["attachments"][0]["content"]["body"]
+    # OK 헤더 TextBlock 다음에 ColumnSet 들이 평탄하게 나열되어야 한다.
+    ok_header_idx = next(
+        i for i, b in enumerate(body)
+        if b.get("type") == "TextBlock" and b.get("text", "").startswith("OK (")
+    )
+    compact_rows = body[ok_header_idx + 1:]
+    assert len(compact_rows) == 5
+    assert all(r["type"] == "ColumnSet" for r in compact_rows)
 
 
 def test_teams_card_uses_full_width_for_teams() -> None:

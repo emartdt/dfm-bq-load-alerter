@@ -42,7 +42,7 @@ from dfm_bq_load_alerter.notifier.teams import TeamsPostError, post_teams_card
 from dfm_bq_load_alerter.notifier.template import (
     TemplateRow,
     build_email_html,
-    build_teams_card,
+    build_teams_cards,
 )
 
 log = logging.getLogger(__name__)
@@ -165,7 +165,8 @@ async def dispatch(
     subject, html = build_email_html(
         trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
     )
-    teams_card = build_teams_card(
+    # Teams Webhook 페이로드 한계 회피를 위해 카드 N 분할 가능.
+    teams_cards = build_teams_cards(
         trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
     )
 
@@ -229,15 +230,24 @@ async def dispatch(
             )
             events_added += 1
             continue
+        chunk_total = len(teams_cards)
+        chunk_summary = (
+            f"{summary} · webhook={hook.name}"
+            + (f" · chunks={chunk_total}" if chunk_total > 1 else "")
+        )
         try:
-            await post_teams_card(webhook_url=url, payload=teams_card)
+            for idx, card in enumerate(teams_cards, start=1):
+                log.info(
+                    "teams chunk %d/%d webhook=%s", idx, chunk_total, hook.name
+                )
+                await post_teams_card(webhook_url=url, payload=card)
             await _persist_event(
                 session,
                 snapshot_id=snapshot_id,
                 trigger_kind=tk_enum,
                 channel=Channel.teams,
                 status=EventStatus.sent,
-                payload_summary=f"{summary} · webhook={hook.name}",
+                payload_summary=chunk_summary,
             )
         except TeamsPostError as exc:
             log.warning("teams webhook failed: %s", exc)
@@ -247,7 +257,7 @@ async def dispatch(
                 trigger_kind=tk_enum,
                 channel=Channel.teams,
                 status=EventStatus.failed,
-                payload_summary=f"{summary} · webhook={hook.name}",
+                payload_summary=chunk_summary,
                 error=str(exc),
             )
         events_added += 1

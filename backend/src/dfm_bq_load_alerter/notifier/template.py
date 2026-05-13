@@ -215,7 +215,15 @@ _HTML_TEMPLATE = _env.from_string(
 
   {% if ok_rows and trigger_kind == "report" %}
   <h3 style="margin:24px 4px 12px;color:#2e7d32;font-size:15px;letter-spacing:0.02em;">OK ({{ ok_rows|length }})</h3>
-  {% for r in ok_rows %}{{ render_card(r, "ok") }}{% endfor %}
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border-left:4px solid #2e7d32;">
+  <tr><td style="padding:8px 16px;">
+    {% for r in ok_rows %}
+    <div style="display:block;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:13px;color:#374151;">
+      <span style="color:#6b7280;">{% if r.project %}{{ r.project }}.{% endif %}{{ r.dataset }}.</span><strong>{{ r.table_name }}</strong>
+      <span style="color:#6b7280;float:right;">{{ r.today_row_count|fmt_count }} rows · {{ r.delta_percent_vs_yesterday|signed_percent }}</span>
+    </div>
+    {% endfor %}
+  </td></tr></table>
   {% endif %}
 
   <p style="font-size:11px;color:#9ca3af;text-align:center;margin-top:24px;">dfm-bq-load-alerter</p>
@@ -445,6 +453,47 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
     }
 
 
+def _ok_row_compact(r: TemplateRow) -> dict[str, Any]:
+    """리포트의 OK 행을 한 줄 ColumnSet 으로 압축 (페이로드 절약용)."""
+    project_prefix = f"{r.project}." if r.project else ""
+    return {
+        "type": "ColumnSet",
+        "spacing": "Small",
+        "columns": [
+            {
+                "type": "Column",
+                "width": "stretch",
+                "items": [
+                    {
+                        "type": "TextBlock",
+                        "text": f"{project_prefix}{r.dataset}.**{r.table_name}**",
+                        "size": "Small",
+                        "spacing": "None",
+                        "wrap": True,
+                    }
+                ],
+            },
+            {
+                "type": "Column",
+                "width": "auto",
+                "items": [
+                    {
+                        "type": "TextBlock",
+                        "text": (
+                            f"{_fmt_count(r.today_row_count)} rows · "
+                            f"{_signed_percent(r.delta_percent_vs_yesterday)}"
+                        ),
+                        "size": "Small",
+                        "spacing": "None",
+                        "isSubtle": True,
+                        "horizontalAlignment": "Right",
+                    }
+                ],
+            },
+        ],
+    }
+
+
 def _pill_columns(
     fail_count: int, insufficient_count: int, ok_count: int, trigger_kind: str
 ) -> dict[str, Any] | None:
@@ -476,6 +525,98 @@ def _pill_columns(
     if not cols:
         return None
     return {"type": "ColumnSet", "spacing": "Small", "columns": cols}
+
+
+# Teams Incoming Webhook / Workflow 의 페이로드 한계(~28KB). 헤더·구분자·인코딩
+# 오버헤드까지 감안해 22KB 를 분할 임계로 둔다.
+_TEAMS_PAYLOAD_BUDGET_BYTES = 22_000
+
+
+def _payload_size(card: dict[str, Any]) -> int:
+    import json
+
+    return len(json.dumps(card, ensure_ascii=False).encode("utf-8"))
+
+
+def _wrap_adaptive_card(body: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.5",
+                    "msteams": {"width": "Full"},
+                    "body": body,
+                },
+            }
+        ],
+    }
+
+
+def build_teams_cards(
+    *, trigger_kind: str, expected: datetime, actual: datetime, rows: list[TemplateRow]
+) -> list[dict[str, Any]]:
+    """Build one-or-more Adaptive Card payloads, splitting to keep each ≤ ~22KB.
+
+    Teams Webhook(Workflow) 은 페이로드 ~28KB 를 초과하면 거절한다. 테이블이
+    많아질수록 카드가 커지므로, body 의 트레일링 요소(테이블별 Container)
+    들을 적당히 나눠 여러 카드로 발송한다. 헤더(트리거 라벨/제목/예정·실측
+    시각/상태 pill) 는 첫 카드에만 포함하고, 후속 카드에는 "(2/N)" 표시.
+    """
+    base = build_teams_card(
+        trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
+    )
+    if _payload_size(base) <= _TEAMS_PAYLOAD_BUDGET_BYTES:
+        return [base]
+
+    body: list[dict[str, Any]] = base["attachments"][0]["content"]["body"]
+    # 헤더 = 트리거 라벨/제목/시각/상태 pill 까지(첫 4개). 그 뒤가 섹션 헤더 +
+    # 컨테이너들이 섞여 있어 분할 대상이다.
+    header_end = 0
+    for idx, item in enumerate(body):
+        if item.get("size") == "Large" and item.get("weight") == "Bolder":
+            header_end = idx
+        if item.get("type") == "ColumnSet" and idx > header_end:
+            header_end = idx
+            break
+    header = body[: header_end + 1]
+    tail = body[header_end + 1 :]
+
+    # tail 을 순서대로 채워가며 budget 을 넘기 직전 분할.
+    cards: list[dict[str, Any]] = []
+    current: list[dict[str, Any]] = list(header)
+    for node in tail:
+        candidate = _wrap_adaptive_card(current + [node])
+        if (
+            _payload_size(candidate) > _TEAMS_PAYLOAD_BUDGET_BYTES
+            and len(current) > len(header)
+        ):
+            cards.append(_wrap_adaptive_card(current))
+            current = list(header) + [node]
+        else:
+            current.append(node)
+    cards.append(_wrap_adaptive_card(current))
+
+    # "(i/N)" 표식을 첫 헤더 TextBlock 옆 작은 라벨로 부착.
+    total = len(cards)
+    if total > 1:
+        for i, card in enumerate(cards, start=1):
+            body = card["attachments"][0]["content"]["body"]
+            label_idx = next(
+                (
+                    j
+                    for j, b in enumerate(body)
+                    if b.get("size") == "Small" and "리포트" in b.get("text", "")
+                    or b.get("size") == "Small" and "알림" in b.get("text", "")
+                ),
+                0,
+            )
+            body[label_idx] = dict(body[label_idx])
+            body[label_idx]["text"] = f"{body[label_idx].get('text','')}  ({i}/{total})"
+    return cards
 
 
 def build_teams_card(
@@ -558,8 +699,10 @@ def build_teams_card(
                 "separator": True,
             }
         )
+        # OK 행은 한 줄 ColumnSet 으로 압축. body 최상위에 평탄하게 펼쳐서
+        # 큰 리포트일 때 build_teams_cards 가 청크 단위로 분할할 수 있게 한다.
         for r in ok:
-            body.append(_build_card_container(r, "ok"))
+            body.append(_ok_row_compact(r))
 
     return {
         "type": "message",
