@@ -41,9 +41,14 @@ export interface EventPage {
   total: number
 }
 
+export type SortDir = 'asc' | 'desc'
+
 export async function listSnapshots(params: {
   table_id?: number
   status?: SnapshotStatus
+  q?: string
+  sort_by?: string
+  sort_dir?: SortDir
   limit?: number
   offset?: number
 }): Promise<SnapshotPage> {
@@ -55,6 +60,9 @@ export async function listEvents(params: {
   channel?: EventChannel
   event_status?: EventStatus
   trigger_kind?: TriggerKind
+  q?: string
+  sort_by?: string
+  sort_dir?: SortDir
   limit?: number
   offset?: number
 }): Promise<EventPage> {

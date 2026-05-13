@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dfm_bq_load_alerter.auth import require_admin
@@ -67,25 +67,57 @@ class EventPage(BaseModel):
     total: int
 
 
+_SNAPSHOT_SORT_COLUMNS = {
+    "checked_at": CheckSnapshot.checked_at,
+    "expected_check_time": CheckSnapshot.expected_check_time,
+    "project_id": Table.project_id,
+    "dataset": Table.dataset,
+    "table_name": Table.table_name,
+    "status": CheckSnapshot.status,
+    "row_count": CheckSnapshot.row_count,
+    "delta_percent_vs_yesterday": CheckSnapshot.delta_percent_vs_yesterday,
+    "last_modified": CheckSnapshot.last_modified,
+}
+
+
 @router.get("/snapshots", response_model=SnapshotPage)
 async def list_snapshots(
     session: Annotated[AsyncSession, Depends(get_session)],
     _principal: Annotated[dict, Depends(require_admin)],
     table_id: Annotated[int | None, Query(ge=1)] = None,
     status: Annotated[CheckStatus | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    sort_by: Annotated[str, Query()] = "checked_at",
+    sort_dir: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SnapshotPage:
     base = select(CheckSnapshot).join(Table, Table.id == CheckSnapshot.table_id)
-    count_stmt = select(func.count(CheckSnapshot.id))
+    count_stmt = (
+        select(func.count(CheckSnapshot.id))
+        .select_from(CheckSnapshot)
+        .join(Table, Table.id == CheckSnapshot.table_id)
+    )
     if table_id is not None:
         base = base.where(CheckSnapshot.table_id == table_id)
         count_stmt = count_stmt.where(CheckSnapshot.table_id == table_id)
     if status is not None:
         base = base.where(CheckSnapshot.status == status)
         count_stmt = count_stmt.where(CheckSnapshot.status == status)
+    if q:
+        like = f"%{q.strip()}%"
+        search_clause = or_(
+            Table.project_id.ilike(like),
+            Table.dataset.ilike(like),
+            Table.table_name.ilike(like),
+        )
+        base = base.where(search_clause)
+        count_stmt = count_stmt.where(search_clause)
 
-    base = base.order_by(CheckSnapshot.checked_at.desc()).limit(limit).offset(offset)
+    sort_col = _SNAPSHOT_SORT_COLUMNS.get(sort_by, CheckSnapshot.checked_at)
+    order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
+    # 동일값 안정 정렬용 tiebreaker
+    base = base.order_by(order, CheckSnapshot.id.desc()).limit(limit).offset(offset)
 
     rows = (
         await session.execute(
@@ -119,6 +151,16 @@ async def list_snapshots(
     return SnapshotPage(items=items, total=total)
 
 
+_EVENT_SORT_COLUMNS = {
+    "sent_at": AlertEvent.sent_at,
+    "trigger_kind": AlertEvent.trigger_kind,
+    "channel": AlertEvent.channel,
+    "status": AlertEvent.status,
+    "payload_summary": AlertEvent.payload_summary,
+    "error": AlertEvent.error,
+}
+
+
 @router.get("/events", response_model=EventPage)
 async def list_events(
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -126,6 +168,9 @@ async def list_events(
     channel: Annotated[Channel | None, Query()] = None,
     event_status: Annotated[EventStatus | None, Query()] = None,
     trigger_kind: Annotated[TriggerKind | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    sort_by: Annotated[str, Query()] = "sent_at",
+    sort_dir: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> EventPage:
@@ -140,8 +185,18 @@ async def list_events(
     if trigger_kind is not None:
         base = base.where(AlertEvent.trigger_kind == trigger_kind)
         count_stmt = count_stmt.where(AlertEvent.trigger_kind == trigger_kind)
+    if q:
+        like = f"%{q.strip()}%"
+        search_clause = or_(
+            AlertEvent.payload_summary.ilike(like),
+            AlertEvent.error.ilike(like),
+        )
+        base = base.where(search_clause)
+        count_stmt = count_stmt.where(search_clause)
 
-    base = base.order_by(AlertEvent.sent_at.desc()).limit(limit).offset(offset)
+    sort_col = _EVENT_SORT_COLUMNS.get(sort_by, AlertEvent.sent_at)
+    order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
+    base = base.order_by(order, AlertEvent.id.desc()).limit(limit).offset(offset)
     rows = (await session.execute(base)).scalars().all()
     total = (await session.execute(count_stmt)).scalar_one()
 

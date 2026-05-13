@@ -9,10 +9,28 @@ import {
   type EventStatus,
   type SnapshotItem,
   type SnapshotStatus,
+  type SortDir,
   type TriggerKind,
 } from '../api/history'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+
+type SnapSortKey =
+  | 'checked_at'
+  | 'project_id'
+  | 'dataset'
+  | 'table_name'
+  | 'status'
+  | 'row_count'
+  | 'delta_percent_vs_yesterday'
+
+type EventSortKey =
+  | 'sent_at'
+  | 'trigger_kind'
+  | 'channel'
+  | 'status'
+  | 'payload_summary'
+  | 'error'
 
 const SNAPSHOT_STATUS_LABEL: Record<string, string> = {
   ok: '정상',
@@ -74,6 +92,10 @@ export function History() {
   const [snaps, setSnaps] = useState<SnapshotItem[]>([])
   const [snapsTotal, setSnapsTotal] = useState<number>(0)
   const [snapStatus, setSnapStatus] = useState<SnapshotStatus | ''>('')
+  const [snapQuery, setSnapQuery] = useState<string>('')
+  const [snapQueryDraft, setSnapQueryDraft] = useState<string>('')
+  const [snapSortBy, setSnapSortBy] = useState<SnapSortKey>('checked_at')
+  const [snapSortDir, setSnapSortDir] = useState<SortDir>('desc')
   const [snapPage, setSnapPage] = useState<number>(1)
   const [snapPageSize, setSnapPageSize] = useState<number>(50)
 
@@ -82,6 +104,10 @@ export function History() {
   const [eventChannel, setEventChannel] = useState<EventChannel | ''>('')
   const [eventStatus, setEventStatus] = useState<EventStatus | ''>('')
   const [trigger, setTrigger] = useState<TriggerKind | ''>('')
+  const [eventQuery, setEventQuery] = useState<string>('')
+  const [eventQueryDraft, setEventQueryDraft] = useState<string>('')
+  const [eventSortBy, setEventSortBy] = useState<EventSortKey>('sent_at')
+  const [eventSortDir, setEventSortDir] = useState<SortDir>('desc')
   const [eventPage, setEventPage] = useState<number>(1)
   const [eventPageSize, setEventPageSize] = useState<number>(50)
 
@@ -91,6 +117,9 @@ export function History() {
     try {
       const page = await listSnapshots({
         status: snapStatus || undefined,
+        q: snapQuery || undefined,
+        sort_by: snapSortBy,
+        sort_dir: snapSortDir,
         limit: snapPageSize,
         offset: (snapPage - 1) * snapPageSize,
       })
@@ -101,7 +130,7 @@ export function History() {
     } finally {
       setBusy(false)
     }
-  }, [snapStatus, snapPage, snapPageSize])
+  }, [snapStatus, snapQuery, snapSortBy, snapSortDir, snapPage, snapPageSize])
 
   const loadEvents = useCallback(async () => {
     setBusy(true)
@@ -111,6 +140,9 @@ export function History() {
         channel: eventChannel || undefined,
         event_status: eventStatus || undefined,
         trigger_kind: trigger || undefined,
+        q: eventQuery || undefined,
+        sort_by: eventSortBy,
+        sort_dir: eventSortDir,
         limit: eventPageSize,
         offset: (eventPage - 1) * eventPageSize,
       })
@@ -121,15 +153,32 @@ export function History() {
     } finally {
       setBusy(false)
     }
-  }, [eventChannel, eventStatus, trigger, eventPage, eventPageSize])
+  }, [
+    eventChannel,
+    eventStatus,
+    trigger,
+    eventQuery,
+    eventSortBy,
+    eventSortDir,
+    eventPage,
+    eventPageSize,
+  ])
 
   useEffect(() => {
     setSnapPage(1)
-  }, [snapStatus, snapPageSize])
+  }, [snapStatus, snapQuery, snapSortBy, snapSortDir, snapPageSize])
 
   useEffect(() => {
     setEventPage(1)
-  }, [eventChannel, eventStatus, trigger, eventPageSize])
+  }, [
+    eventChannel,
+    eventStatus,
+    trigger,
+    eventQuery,
+    eventSortBy,
+    eventSortDir,
+    eventPageSize,
+  ])
 
   useEffect(() => {
     if (tab === 'snapshots') void loadSnaps()
@@ -143,6 +192,41 @@ export function History() {
   const eventTotalPages = Math.max(1, Math.ceil(eventsTotal / eventPageSize))
   const eventCurrentPage = Math.min(eventPage, eventTotalPages)
   const eventPageStart = (eventCurrentPage - 1) * eventPageSize
+
+  const toggleSnapSort = (key: SnapSortKey) => {
+    if (snapSortBy !== key) {
+      setSnapSortBy(key)
+      setSnapSortDir('asc')
+      return
+    }
+    setSnapSortDir(snapSortDir === 'asc' ? 'desc' : 'asc')
+  }
+  const snapSortIndicator = (key: SnapSortKey) => {
+    if (snapSortBy !== key) return ''
+    return snapSortDir === 'asc' ? ' ▲' : ' ▼'
+  }
+
+  const toggleEventSort = (key: EventSortKey) => {
+    if (eventSortBy !== key) {
+      setEventSortBy(key)
+      setEventSortDir('asc')
+      return
+    }
+    setEventSortDir(eventSortDir === 'asc' ? 'desc' : 'asc')
+  }
+  const eventSortIndicator = (key: EventSortKey) => {
+    if (eventSortBy !== key) return ''
+    return eventSortDir === 'asc' ? ' ▲' : ' ▼'
+  }
+
+  const onSnapSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setSnapQuery(snapQueryDraft.trim())
+  }
+  const onEventSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setEventQuery(eventQueryDraft.trim())
+  }
 
   return (
     <section>
@@ -172,9 +256,17 @@ export function History() {
 
       {tab === 'snapshots' ? (
         <>
-          <div className="actions">
-            <label>
-              상태 필터{' '}
+          <div className="filter-bar">
+            <form className="filter-field" onSubmit={onSnapSearchSubmit}>
+              <span>검색</span>
+              <input
+                value={snapQueryDraft}
+                onChange={(e) => setSnapQueryDraft(e.target.value)}
+                placeholder="프로젝트·데이터셋·테이블 검색 (Enter)"
+              />
+            </form>
+            <label className="filter-field">
+              <span>상태</span>
               <select
                 value={snapStatus}
                 onChange={(e) => setSnapStatus(e.target.value as SnapshotStatus | '')}
@@ -184,21 +276,42 @@ export function History() {
                 <option value="fail">실패</option>
               </select>
             </label>
-            <span className="run-meta">
+            <span className="filter-meta">
               {snapsTotal === 0
                 ? '0 건'
                 : `${snapPageStart + 1}–${Math.min(snapPageStart + snapPageSize, snapsTotal)} / ${snapsTotal.toLocaleString()} 건`}
             </span>
+            {(snapQuery !== '' || snapStatus !== '') && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
+                  setSnapQuery('')
+                  setSnapQueryDraft('')
+                  setSnapStatus('')
+                }}
+              >
+                필터 초기화
+              </button>
+            )}
           </div>
           <div className="table-scroll">
           <table className="grid-table">
             <thead>
               <tr>
-                <th>점검 시각</th>
-                <th>프로젝트.데이터셋.테이블</th>
-                <th>
-                  상태{' '}
-                  <span className="info-tip" tabIndex={0}>
+                <th className="sortable" onClick={() => toggleSnapSort('checked_at')}>
+                  점검 시각{snapSortIndicator('checked_at')}
+                </th>
+                <th className="sortable" onClick={() => toggleSnapSort('dataset')}>
+                  프로젝트.데이터셋.테이블{snapSortIndicator('dataset')}
+                </th>
+                <th className="sortable" onClick={() => toggleSnapSort('status')}>
+                  상태{snapSortIndicator('status')}{' '}
+                  <span
+                    className="info-tip"
+                    tabIndex={0}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <span className="info-icon" aria-hidden="true">
                       ⓘ
                     </span>
@@ -215,8 +328,18 @@ export function History() {
                   </span>
                 </th>
                 <th>사유</th>
-                <th>금일 rows</th>
-                <th>증감률</th>
+                <th
+                  className="sortable"
+                  onClick={() => toggleSnapSort('row_count')}
+                >
+                  금일 rows{snapSortIndicator('row_count')}
+                </th>
+                <th
+                  className="sortable"
+                  onClick={() => toggleSnapSort('delta_percent_vs_yesterday')}
+                >
+                  증감률{snapSortIndicator('delta_percent_vs_yesterday')}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -307,9 +430,17 @@ export function History() {
         </>
       ) : (
         <>
-          <div className="actions">
-            <label>
-              채널{' '}
+          <div className="filter-bar">
+            <form className="filter-field" onSubmit={onEventSearchSubmit}>
+              <span>검색</span>
+              <input
+                value={eventQueryDraft}
+                onChange={(e) => setEventQueryDraft(e.target.value)}
+                placeholder="요약·오류 본문 검색 (Enter)"
+              />
+            </form>
+            <label className="filter-field">
+              <span>채널</span>
               <select
                 value={eventChannel}
                 onChange={(e) => setEventChannel(e.target.value as EventChannel | '')}
@@ -319,8 +450,8 @@ export function History() {
                 <option value="teams">Teams</option>
               </select>
             </label>
-            <label>
-              상태{' '}
+            <label className="filter-field">
+              <span>상태</span>
               <select
                 value={eventStatus}
                 onChange={(e) => setEventStatus(e.target.value as EventStatus | '')}
@@ -331,8 +462,8 @@ export function History() {
                 <option value="skipped">건너뜀</option>
               </select>
             </label>
-            <label>
-              트리거{' '}
+            <label className="filter-field">
+              <span>트리거</span>
               <select
                 value={trigger}
                 onChange={(e) => setTrigger(e.target.value as TriggerKind | '')}
@@ -342,22 +473,56 @@ export function History() {
                 <option value="report">리포트</option>
               </select>
             </label>
-            <span className="run-meta">
+            <span className="filter-meta">
               {eventsTotal === 0
                 ? '0 건'
                 : `${eventPageStart + 1}–${Math.min(eventPageStart + eventPageSize, eventsTotal)} / ${eventsTotal.toLocaleString()} 건`}
             </span>
+            {(eventQuery !== '' ||
+              eventChannel !== '' ||
+              eventStatus !== '' ||
+              trigger !== '') && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
+                  setEventQuery('')
+                  setEventQueryDraft('')
+                  setEventChannel('')
+                  setEventStatus('')
+                  setTrigger('')
+                }}
+              >
+                필터 초기화
+              </button>
+            )}
           </div>
           <div className="table-scroll">
           <table className="grid-table">
             <thead>
               <tr>
-                <th>발송 시각</th>
-                <th>트리거</th>
-                <th>채널</th>
-                <th>
-                  상태{' '}
-                  <span className="info-tip" tabIndex={0}>
+                <th className="sortable" onClick={() => toggleEventSort('sent_at')}>
+                  발송 시각{eventSortIndicator('sent_at')}
+                </th>
+                <th
+                  className="sortable"
+                  onClick={() => toggleEventSort('trigger_kind')}
+                >
+                  트리거{eventSortIndicator('trigger_kind')}
+                </th>
+                <th className="sortable" onClick={() => toggleEventSort('channel')}>
+                  채널{eventSortIndicator('channel')}
+                </th>
+                <th
+                  className="sortable"
+                  onClick={() => toggleEventSort('status')}
+                >
+                  상태{eventSortIndicator('status')}{' '}
+                  <span
+                    className="info-tip"
+                    tabIndex={0}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <span className="info-icon" aria-hidden="true">
                       ⓘ
                     </span>
@@ -373,8 +538,15 @@ export function History() {
                     </span>
                   </span>
                 </th>
-                <th>요약</th>
-                <th>오류</th>
+                <th
+                  className="sortable"
+                  onClick={() => toggleEventSort('payload_summary')}
+                >
+                  요약{eventSortIndicator('payload_summary')}
+                </th>
+                <th className="sortable" onClick={() => toggleEventSort('error')}>
+                  오류{eventSortIndicator('error')}
+                </th>
               </tr>
             </thead>
             <tbody>
