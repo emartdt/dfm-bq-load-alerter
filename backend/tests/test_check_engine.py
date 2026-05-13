@@ -66,8 +66,8 @@ def test_오늘_미적재면_FAIL_사유에_오늘_미적재가_포함된다() -
     assert "오늘 미적재" in result.failure_reasons
 
 
-def test_row_count_가_0이면_FAIL이다() -> None:
-    """row_count==0 은 버퍼/적재 여부와 무관하게 FAIL."""
+def test_row_count_가_0이면_오늘_적재가_있을_때_FAIL이다() -> None:
+    """폴백 분기(no batch_time): 오늘 적재된 상태에서 row_count==0 → FAIL."""
     with freeze_time(datetime(2026, 5, 6, 8, 0, tzinfo=KST)):
         result = evaluate(
             _메타(

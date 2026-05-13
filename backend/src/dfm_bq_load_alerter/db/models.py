@@ -161,7 +161,8 @@ class Table(Base):
         comment=(
             "버퍼 내 미적재/행 수 0 조건 활성화 여부. "
             "true 이면 윈도우 [batch_time - buffer, batch_time + buffer] 기준으로 "
-            "윈도우 밖 적재/미적재·row_count=0 을 FAIL 로 평가. "
+            "윈도우 밖 적재/미적재를 FAIL 로 평가하며, row_count=0 은 "
+            "윈도우 안 적재가 있을 때만 추가 FAIL 사유로 평가됨. "
             "true 일 때는 batch_time 이 필수값으로 사용되며 (schema 상 NOT NULL), "
             "false 이면 해당 조건 전체를 무시."
         ),

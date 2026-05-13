@@ -74,8 +74,8 @@ def test_버퍼_윈도우_안에서는_last_modified가_어제여도_오늘_미�
     assert "오늘 미적재" not in result.failure_reasons
 
 
-def test_row_count_가_0이면_버퍼_안이라도_FAIL이다() -> None:
-    """적재되었으나 비어 있는 경우는 버퍼 상태와 무관하게 FAIL."""
+def test_윈도우_안_적재이고_row_count_0이면_버퍼_상태와_무관하게_FAIL이다() -> None:
+    """윈도우 안 적재(05:30)에서 비어 있으면 검증 시각이 in_buffer 든 아니든 FAIL."""
     now = datetime(2026, 5, 7, 6, 0, tzinfo=KST)
     today = datetime(2026, 5, 7, 5, 30, tzinfo=KST)
     md = _메타(last_modified=today, row_count=0)
@@ -89,6 +89,41 @@ def test_row_count_가_0이면_버퍼_안이라도_FAIL이다() -> None:
     )
     assert result.status == CheckStatus.fail
     assert "row count 0" in result.failure_reasons
+
+
+def test_윈도우_밖_적재이면_row_count_0_사유는_발화하지_않는다() -> None:
+    """윈도우 밖 적재 케이스는 '윈도우 내 미적재' 가 표현하므로 row_count 검사 생략."""
+    now = datetime(2026, 5, 7, 9, 30, tzinfo=KST)  # 윈도우 종료 09:00 이후
+    early = datetime(2026, 5, 7, 0, 30, tzinfo=KST)  # 윈도우 시작(01:00) 이전
+    md = _메타(last_modified=early, row_count=0)
+    result = evaluate(
+        md,
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
+        now=now,
+    )
+    assert result.status == CheckStatus.fail
+    assert "윈도우 내 미적재" in result.failure_reasons
+    assert "row count 0" not in result.failure_reasons
+
+
+def test_미적재_상태에서는_row_count_0_사유는_발화하지_않는다() -> None:
+    """last_modified 가 None 이면 row_count 검사 자체가 적용되지 않는다."""
+    now = datetime(2026, 5, 7, 9, 30, tzinfo=KST)
+    md = _메타(last_modified=None, row_count=0)
+    result = evaluate(
+        md,
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
+        now=now,
+    )
+    assert result.status == CheckStatus.fail
+    assert "최종 업데이트 시각 없음" in result.failure_reasons
+    assert "row count 0" not in result.failure_reasons
 
 
 # 엄격 해석 A: 윈도우 = [batch - buffer, batch + buffer]. 적재 시각이 윈도우
