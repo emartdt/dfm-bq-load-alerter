@@ -454,6 +454,20 @@ p { margin: 0 0 var(--sp-sm); }
   -webkit-overflow-scrolling: touch;
   min-height: 360px;
 }
+.table-scroll--wide {
+  width: calc(100vw - 2 * var(--sp-lg));
+  max-width: calc(100vw - 2 * var(--sp-lg));
+  margin-left: calc(50% - 50vw + var(--sp-lg));
+  margin-right: calc(50% - 50vw + var(--sp-lg));
+}
+@media (max-width: 833px) {
+  .table-scroll--wide {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
 .grid-table {
   width: 100%;
   border-collapse: separate;

@@ -651,7 +651,7 @@ export function Tables() {
         )}
       </div>
 
-      <div className="table-scroll">
+      <div className="table-scroll table-scroll--wide">
       <table className="grid-table">
         <thead>
           <tr>
