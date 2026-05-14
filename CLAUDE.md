@@ -1,7 +1,8 @@
 ## 아키텍처
-- backend: fastapi
-- frontend: react
+- backend: python3.13 + fastapi
+- frontend: reactJS
 - database: cloudSQL(pgsql)
+- auth: Keycloak
 
 ## 요구사항 정리
 
