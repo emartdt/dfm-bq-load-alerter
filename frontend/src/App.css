@@ -314,6 +314,11 @@ p { margin: 0 0 var(--sp-sm); }
   box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18);
 }
 .field input::placeholder { color: var(--color-ink-muted-48); }
+.field .sql-textarea {
+  font-family: var(--font-mono);
+  min-height: 110px;
+  white-space: pre;
+}
 
 /* Buttons */
 .btn {

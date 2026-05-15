@@ -23,6 +23,7 @@ const EMPTY_FORM: TableCreate = {
   buffer_minutes: null,
   batch_day_of_month: null,
   delta_threshold_percent: null,
+  condition_query: null,
   note: '',
   cond_buffer_load: true,
   cond_delta_rowcount: true,
@@ -81,6 +82,7 @@ function rowToForm(row: TableRow): TableCreate {
     buffer_minutes: row.buffer_minutes,
     batch_day_of_month: row.batch_day_of_month,
     delta_threshold_percent: row.delta_threshold_percent,
+    condition_query: row.condition_query,
     note: row.note ?? '',
     cond_buffer_load: row.cond_buffer_load,
     cond_delta_rowcount: row.cond_delta_rowcount,
@@ -263,6 +265,9 @@ export function Tables() {
           form.delta_threshold_percent === undefined
             ? null
             : Number(form.delta_threshold_percent),
+        condition_query: form.condition_query?.trim()
+          ? form.condition_query.trim()
+          : null,
         note: form.note?.trim() ? form.note.trim() : null,
         cond_buffer_load: form.cond_buffer_load ?? true,
         cond_delta_rowcount: form.cond_delta_rowcount ?? true,
@@ -508,6 +513,27 @@ export function Tables() {
               <option value="true">활성</option>
               <option value="false">비활성</option>
             </select>
+          </label>
+          <label className="field span-2">
+            <span>
+              커스텀 row_count SQL{' '}
+              <span className="field-hint">
+                비우면 __TABLES__ 사용 · SELECT/WITH 로 시작, 단일 행·단일 정수 컬럼
+              </span>
+            </span>
+            <textarea
+              className="sql-textarea"
+              rows={4}
+              value={form.condition_query ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, condition_query: e.target.value })
+              }
+              placeholder={
+                'SELECT COUNT(*) FROM `project.dataset.table` ' +
+                "WHERE status = 'active'"
+              }
+              spellCheck={false}
+            />
           </label>
           <label className="field span-2">
             <span>

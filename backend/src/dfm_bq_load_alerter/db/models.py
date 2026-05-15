@@ -144,8 +144,10 @@ class Table(Base):
         Text,
         nullable=True,
         comment=(
-            "사용자 정의 SQL 조건식 (BigQuery 표준 SQL). "
-            "쿼리 결과가 1행 이상이면 FAIL 로 판정."
+            "사용자 정의 row_count 산출 SQL (BigQuery 표준 SQL). "
+            "NULL 이면 __TABLES__.row_count 를 사용. 값이 있으면 SELECT/WITH 로 시작하는 "
+            "단일 행·단일 정수 컬럼 쿼리를 실행해 그 결과를 row_count 로 사용한다. "
+            "alert_policy.condition_query_max_bytes 처리량 상한 적용."
         ),
     )
     note: Mapped[str | None] = mapped_column(

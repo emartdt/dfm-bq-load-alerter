@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,6 +14,38 @@ log = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 
 
+class ConditionQueryError(ValueError):
+    """Raised when a user-supplied row_count query is invalid or unsafe."""
+
+
+# DML/DDL keywords that must never appear as the first significant token of a
+# user-supplied row_count query. We only accept SELECT/WITH read-only queries.
+_FORBIDDEN_KEYWORDS = frozenset(
+    {
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "CREATE",
+        "ALTER",
+        "TRUNCATE",
+        "MERGE",
+        "GRANT",
+        "REVOKE",
+        "CALL",
+        "EXECUTE",
+        "EXPORT",
+        "LOAD",
+    }
+)
+
+
+_COMMENT_LINE_RE = re.compile(r"--[^\n]*")
+_COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_FIRST_TOKEN_RE = re.compile(r"^\s*([A-Za-z_]+)")
+_WORD_RE = re.compile(r"\b([A-Za-z_]+)\b")
+
+
 @dataclass(frozen=True, slots=True)
 class TableMetadata:
     dataset: str
@@ -21,6 +54,42 @@ class TableMetadata:
     row_count: int | None
     used_count_fallback: bool
     streaming_recent_rows: int | None = None
+
+
+def _strip_sql_comments(query: str) -> str:
+    """Remove `--` line comments and `/* ... */` block comments."""
+    no_block = _COMMENT_BLOCK_RE.sub(" ", query)
+    return _COMMENT_LINE_RE.sub(" ", no_block)
+
+
+def _validate_condition_query(query: str) -> str:
+    """Reject anything that isn't a read-only SELECT/WITH query.
+
+    The check is intentionally conservative: we strip comments, require the
+    first significant token to be SELECT or WITH (case-insensitive), and refuse
+    when any DML/DDL keyword appears as a standalone word elsewhere in the
+    query. BigQuery's parser is the final source of truth — this guard is
+    defence-in-depth so a misconfigured row never enqueues a destructive
+    statement.
+    """
+    stripped = _strip_sql_comments(query).strip()
+    if not stripped:
+        raise ConditionQueryError("condition_query 가 비어 있습니다.")
+    first = _FIRST_TOKEN_RE.match(stripped)
+    if first is None:
+        raise ConditionQueryError("condition_query 의 시작 토큰을 찾을 수 없습니다.")
+    head = first.group(1).upper()
+    if head not in {"SELECT", "WITH"}:
+        raise ConditionQueryError(
+            f"condition_query 는 SELECT 또는 WITH 로 시작해야 합니다 (got {head})."
+        )
+    for match in _WORD_RE.finditer(stripped):
+        token = match.group(1).upper()
+        if token in _FORBIDDEN_KEYWORDS:
+            raise ConditionQueryError(
+                f"condition_query 에 금지된 키워드가 포함되어 있습니다: {token}"
+            )
+    return stripped
 
 
 def _query_metadata(
@@ -94,6 +163,63 @@ def _count_rows(client: bigquery.Client, dataset: str, table_name: str) -> int:
     return int(rows[0]["n"])
 
 
+def _extract_scalar_int(row: object) -> int:
+    """Pull the first column of a one-row BigQuery result as an integer.
+
+    The user query contract is "one row, one integer column". We always read
+    position 0 (BigQuery ``Row`` supports both name and ordinal indexing).
+    """
+    try:
+        value = row[0]  # type: ignore[index]
+    except Exception as exc:
+        raise ConditionQueryError(
+            "condition_query 결과에서 첫 컬럼 값을 읽을 수 없습니다."
+        ) from exc
+    if value is None:
+        raise ConditionQueryError(
+            "condition_query 결과가 NULL 입니다 (정수 row count 필요)."
+        )
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ConditionQueryError(
+            f"condition_query 결과를 정수로 변환할 수 없습니다: {value!r}"
+        ) from exc
+
+
+def run_condition_query(
+    client: bigquery.Client,
+    *,
+    query: str,
+    max_bytes: int,
+) -> tuple[int, int | None]:
+    """Validate, dry-run, and execute a user row_count query.
+
+    Returns ``(row_count, bytes_processed)``. ``bytes_processed`` may be None
+    if the BigQuery client does not surface the value (e.g. mocked tests).
+
+    Raises ``ConditionQueryError`` for validation/budget failures.
+    """
+    sanitized = _validate_condition_query(query)
+
+    dry_config = bigquery.QueryJobConfig(use_legacy_sql=False, dry_run=True, use_query_cache=False)
+    dry_job = client.query(sanitized, job_config=dry_config)
+    estimated = getattr(dry_job, "total_bytes_processed", None)
+    if estimated is not None and estimated > max_bytes:
+        raise ConditionQueryError(
+            f"condition_query 처리량 {estimated} bytes 가 상한 {max_bytes} bytes 를 초과했습니다."
+        )
+
+    exec_config = bigquery.QueryJobConfig(use_legacy_sql=False)
+    job = client.query(sanitized, job_config=exec_config)
+    rows = list(job.result())
+    if not rows:
+        raise ConditionQueryError("condition_query 결과가 비어 있습니다 (정확히 1행 필요).")
+    row_count = _extract_scalar_int(rows[0])
+    bytes_processed = getattr(job, "total_bytes_processed", None)
+    return row_count, bytes_processed
+
+
 def fetch_metadata(
     dataset: str,
     table_name: str,
@@ -101,6 +227,8 @@ def fetch_metadata(
     project_id: str | None = None,
     client: bigquery.Client | None = None,
     force_count: bool = False,
+    row_count_query: str | None = None,
+    row_count_query_max_bytes: int = 104857600,
 ) -> TableMetadata:
     """Fetch monitoring metadata for a single BigQuery table.
 
@@ -109,26 +237,37 @@ def fetch_metadata(
 
     Strategy:
     1. Read __TABLES__ for last_modified + row_count (low-cost metadata).
-    2. If row_count is None or `force_count` is True, run COUNT(*) (fallback
-       — recorded in bq_query_log by the caller for cost monitoring).
-    3. Read STREAMING_TIMELINE for recent buffer rows; combine if streaming
-       is active.
+    2. If ``row_count_query`` is provided, run it (with byte budget) and use
+       its result as ``row_count`` instead of the __TABLES__ value or COUNT(*).
+       last_modified always comes from __TABLES__ — the custom query owns the
+       row_count semantics only.
+    3. Otherwise: if row_count is None or `force_count` is True, run COUNT(*)
+       (fallback — recorded in bq_query_log by the caller for cost monitoring).
+    4. Read STREAMING_TIMELINE for recent buffer rows; combine when streaming
+       is active. Skipped when a custom row_count_query is supplied because the
+       user query is assumed to be authoritative for the count.
     """
     bq = client or get_client(project_id)
     last_modified, row_count = _query_metadata(bq, dataset, table_name)
     used_count_fallback = False
+    streaming_recent: int | None = None
 
-    if row_count is None or force_count:
-        row_count = _count_rows(bq, dataset, table_name)
-        used_count_fallback = True
+    if row_count_query is not None:
+        row_count, _bytes = run_condition_query(
+            bq, query=row_count_query, max_bytes=row_count_query_max_bytes
+        )
+    else:
+        if row_count is None or force_count:
+            row_count = _count_rows(bq, dataset, table_name)
+            used_count_fallback = True
 
-    streaming_recent = _query_streaming_recent_rows(bq, dataset, table_name)
-    if streaming_recent is not None and streaming_recent > 0:
-        # streaming buffer rows are not yet in __TABLES__; reflect them.
-        if row_count is not None:
-            row_count = row_count + streaming_recent
-        if last_modified is None:
-            last_modified = datetime.now(tz=KST)
+        streaming_recent = _query_streaming_recent_rows(bq, dataset, table_name)
+        if streaming_recent is not None and streaming_recent > 0:
+            # streaming buffer rows are not yet in __TABLES__; reflect them.
+            if row_count is not None:
+                row_count = row_count + streaming_recent
+            if last_modified is None:
+                last_modified = datetime.now(tz=KST)
 
     return TableMetadata(
         dataset=dataset,
