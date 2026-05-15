@@ -16,6 +16,7 @@ from freezegun import freeze_time
 from dfm_bq_load_alerter.scheduler.jobs import (
     _expected_check_datetime,
     check_at,
+    cleanup_history,
     report_745,
 )
 
@@ -96,3 +97,56 @@ async def test_report_745_dispatches_with_report_trigger(monkeypatch) -> None:
 
     await report_745()
     assert dispatch_mock.await_args.kwargs["trigger_kind"] == "report"
+
+
+def _make_cleanup_session(*, policy_retention_days: int | None, deleted: tuple[int, int]):
+    """Build an AsyncMock session preloaded with policy + execute rowcounts."""
+    fake_session = AsyncMock()
+    fake_session.commit = AsyncMock()
+    fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+    fake_session.__aexit__ = AsyncMock(return_value=None)
+    if policy_retention_days is None:
+        fake_session.get = AsyncMock(return_value=None)
+    else:
+        policy = MagicMock()
+        policy.retention_days = policy_retention_days
+        fake_session.get = AsyncMock(return_value=policy)
+    snap_result = MagicMock(rowcount=deleted[0])
+    event_result = MagicMock(rowcount=deleted[1])
+    fake_session.execute = AsyncMock(side_effect=[snap_result, event_result])
+    return fake_session
+
+
+@pytest.mark.asyncio
+async def test_cleanup_history_uses_policy_retention(monkeypatch) -> None:
+    fake_session = _make_cleanup_session(policy_retention_days=30, deleted=(5, 3))
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs.sessionmaker_factory",
+        MagicMock(return_value=MagicMock(return_value=fake_session)),
+    )
+
+    now = datetime(2026, 5, 15, 3, 0, tzinfo=KST)
+    result = await cleanup_history(now=now)
+
+    assert result["retention_days"] == 30
+    assert result["deleted_snapshots"] == 5
+    assert result["deleted_events"] == 3
+    assert fake_session.execute.await_count == 2
+    fake_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_history_falls_back_to_settings_when_policy_missing(
+    monkeypatch,
+) -> None:
+    fake_session = _make_cleanup_session(policy_retention_days=None, deleted=(0, 0))
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs.sessionmaker_factory",
+        MagicMock(return_value=MagicMock(return_value=fake_session)),
+    )
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs.settings.retention_days", 90
+    )
+
+    result = await cleanup_history(now=datetime(2026, 5, 15, 3, 0, tzinfo=KST))
+    assert result["retention_days"] == 90

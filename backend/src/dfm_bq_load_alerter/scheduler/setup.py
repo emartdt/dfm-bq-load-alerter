@@ -31,7 +31,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from dfm_bq_load_alerter.db.models import AlertPolicy
 from dfm_bq_load_alerter.db.session import sessionmaker_factory
-from dfm_bq_load_alerter.scheduler.jobs import check_at, report_745
+from dfm_bq_load_alerter.scheduler.jobs import check_at, cleanup_history, report_745
 from dfm_bq_load_alerter.settings import settings
 
 log = logging.getLogger(__name__)
@@ -45,9 +45,11 @@ CHECK_TIMES: tuple[time, ...] = (
     time(9, 0),
 )
 REPORT_TIME: time = time(7, 45)
+CLEANUP_TIME: time = time(3, 0)
 
 CHECK_JOB_PREFIX = "check-"
 REPORT_JOB_PREFIX = "report-"
+CLEANUP_JOB_ID = "cleanup-history"
 POLICY_RELOAD_JOB_ID = "_policy-reload"
 POLICY_POLL_SECONDS = 30
 
@@ -110,11 +112,31 @@ def _add_report_job(scheduler: AsyncIOScheduler, moment: time) -> str:
     return job_id
 
 
+def _add_cleanup_job(scheduler: AsyncIOScheduler, moment: time = CLEANUP_TIME) -> str:
+    scheduler.add_job(
+        cleanup_history,
+        trigger=CronTrigger(
+            hour=moment.hour,
+            minute=moment.minute,
+            timezone=settings.scheduler_timezone,
+        ),
+        id=CLEANUP_JOB_ID,
+        replace_existing=True,
+        misfire_grace_time=settings.misfire_grace_report_seconds,
+        coalesce=True,
+    )
+    log.info(
+        "registered job %s @ %02d:%02d KST", CLEANUP_JOB_ID, moment.hour, moment.minute
+    )
+    return CLEANUP_JOB_ID
+
+
 def register_jobs(scheduler: AsyncIOScheduler) -> None:
     """Register cron jobs from the static fallback constants (sync)."""
     for moment in CHECK_TIMES:
         _add_check_job(scheduler, moment)
     _add_report_job(scheduler, REPORT_TIME)
+    _add_cleanup_job(scheduler)
 
 
 def _sync_check_jobs(
@@ -137,13 +159,15 @@ def _sync_report_job(scheduler: AsyncIOScheduler, report_time: time) -> None:
             log.info("removed stale job %s", job.id)
 
 
-async def _fetch_policy_schedule() -> tuple[tuple[time, ...], time, datetime | None]:
+async def _fetch_policy_schedule() -> tuple[
+    tuple[time, ...], time, time, datetime | None
+]:
     sm = sessionmaker_factory()
     async with sm() as session:
         policy = await session.get(AlertPolicy, 1)
         if policy is None:
             log.info("scheduler: alert_policy row missing, using fallback constants")
-            return CHECK_TIMES, REPORT_TIME, None
+            return CHECK_TIMES, REPORT_TIME, CLEANUP_TIME, None
         parsed: list[time] = []
         for raw in policy.check_times or []:
             try:
@@ -152,7 +176,12 @@ async def _fetch_policy_schedule() -> tuple[tuple[time, ...], time, datetime | N
                 log.warning("scheduler: skipping invalid check_times entry %r", raw)
         if not parsed:
             parsed = list(CHECK_TIMES)
-        return tuple(parsed), policy.report_time, policy.updated_at
+        return (
+            tuple(parsed),
+            policy.report_time,
+            policy.cleanup_time,
+            policy.updated_at,
+        )
 
 
 _last_policy_updated_at: datetime | None = None
@@ -175,31 +204,37 @@ async def reload_jobs_from_policy(
     the DB cache flag still matches.
     """
     global _last_policy_updated_at
-    check_times, report_time, updated_at = await _fetch_policy_schedule()
+    check_times, report_time, cleanup_time, updated_at = await _fetch_policy_schedule()
     checks_str = ", ".join(t.strftime("%H:%M") for t in check_times)
     report_str = report_time.strftime("%H:%M")
+    cleanup_str = cleanup_time.strftime("%H:%M")
     if (
         not force
         and updated_at is not None
         and updated_at == _last_policy_updated_at
     ):
         log.info(
-            "scheduler: policy poll — unchanged (updated_at=%s, checks=[%s], report=%s)",
+            "scheduler: policy poll — unchanged (updated_at=%s, checks=[%s], "
+            "report=%s, cleanup=%s)",
             updated_at,
             checks_str,
             report_str,
+            cleanup_str,
         )
         return
     _sync_check_jobs(scheduler, check_times)
     _sync_report_job(scheduler, report_time)
+    _add_cleanup_job(scheduler, cleanup_time)
     previous = _last_policy_updated_at
     _last_policy_updated_at = updated_at
     log.info(
-        "scheduler: policy applied (updated_at=%s, prev=%s, checks=[%s], report=%s)",
+        "scheduler: policy applied (updated_at=%s, prev=%s, checks=[%s], "
+        "report=%s, cleanup=%s)",
         updated_at,
         previous,
         checks_str,
         report_str,
+        cleanup_str,
     )
 
 

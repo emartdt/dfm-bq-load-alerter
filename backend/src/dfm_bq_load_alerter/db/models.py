@@ -562,6 +562,15 @@ class AlertPolicy(Base):
         nullable=False,
         comment="일일 리포트 송신 시각 (KST).",
     )
+    cleanup_time: Mapped[time] = mapped_column(
+        Time,
+        nullable=False,
+        server_default="03:00",
+        comment=(
+            "이력 정리(cleanup) 잡의 실행 시각 (KST). "
+            "retention_days 보다 오래된 check_snapshots/alert_events 를 삭제한다."
+        ),
+    )
     dedup_strategy: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
