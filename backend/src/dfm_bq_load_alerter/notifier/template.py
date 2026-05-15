@@ -74,6 +74,7 @@ class TemplateRow:
     batch_time: time | None = None
     informational_notes: list[str] | None = None
     buffer_minutes: int | None = None
+    condition_query: str | None = None
 
     @property
     def fqn(self) -> str:
@@ -178,6 +179,13 @@ _HTML_TEMPLATE = _env.from_string(
   <div style="margin-top:12px;">
     <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">참고</div>
     {% for info in r.informational_notes %}<span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#e0f2fe;color:#075985;margin-right:6px;margin-bottom:4px;">ⓘ {{ info }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if r.condition_query %}
+  <div style="margin-top:12px;">
+    <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">사용자 정의 row_count 쿼리</div>
+    <pre style="margin:0;padding:10px 12px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;overflow-x:auto;">{{ r.condition_query }}</pre>
   </div>
   {% endif %}
 
@@ -423,6 +431,30 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
                 "size": "Small",
                 "wrap": True,
                 "spacing": "Small",
+            }
+        )
+    if r.condition_query:
+        items.append(
+            {
+                "type": "TextBlock",
+                "text": "**사용자 정의 row_count 쿼리**",
+                "size": "Small",
+                "weight": "Bolder",
+                "isSubtle": True,
+                "spacing": "Small",
+                "wrap": True,
+            }
+        )
+        items.append(
+            {
+                "type": "TextBlock",
+                # Teams 의 Adaptive Card 는 ``` 코드 펜스를 렌더하지 않으므로
+                # fontType=Monospace 로 명시해 등폭 가독성을 확보한다.
+                "text": r.condition_query,
+                "fontType": "Monospace",
+                "size": "Small",
+                "wrap": True,
+                "spacing": "None",
             }
         )
     if r.note:

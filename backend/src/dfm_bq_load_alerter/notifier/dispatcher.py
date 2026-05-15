@@ -76,6 +76,7 @@ class DispatchSnapshot:
     batch_time: time | None = None
     informational_notes: list[str] | None = None
     buffer_minutes: int | None = None
+    condition_query: str | None = None
 
 
 def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
@@ -96,6 +97,7 @@ def _to_template_row(s: DispatchSnapshot) -> TemplateRow:
         batch_time=s.batch_time,
         informational_notes=list(s.informational_notes or []),
         buffer_minutes=s.buffer_minutes,
+        condition_query=s.condition_query,
     )
 
 
@@ -369,6 +371,7 @@ async def build_dispatch_snapshots(
                     if table.buffer_minutes is not None
                     else fallback_buffer
                 ),
+                condition_query=table.condition_query,
             )
         )
     return result

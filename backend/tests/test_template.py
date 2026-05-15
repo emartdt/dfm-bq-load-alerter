@@ -411,6 +411,84 @@ def test_teams_card_renders_informational_notes_distinctly() -> None:
     assert "⚠" in fail_text["text"]
 
 
+def test_email_html_includes_condition_query_when_set() -> None:
+    """테이블에 condition_query 가 있으면 카드 본문에 함께 노출되어야 한다."""
+    query = "SELECT COUNT(*) FROM `prj.bw.PZEVENTID` WHERE DT = CURRENT_DATE('Asia/Seoul')"
+    row = _row(
+        "fail",
+        failure_reasons=["row count 0"],
+        condition_query=query,
+    )
+    _, html = build_email_html(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    assert "사용자 정의 row_count 쿼리" in html
+    # autoescape 로 인코딩된 백틱/괄호도 그대로 포함되어 있어야 한다.
+    assert "PZEVENTID" in html
+    assert "CURRENT_DATE" in html
+    assert "<pre" in html
+
+
+def test_email_html_escapes_condition_query() -> None:
+    """condition_query 의 위험 토큰도 jinja autoescape 로 무력화되어야 한다."""
+    row = _row(
+        "fail",
+        failure_reasons=["x"],
+        condition_query="SELECT 1 -- <script>alert(1)</script>",
+    )
+    _, html = build_email_html(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_email_html_omits_condition_query_block_when_absent() -> None:
+    row = _row("fail", failure_reasons=["x"], condition_query=None)
+    _, html = build_email_html(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    assert "사용자 정의 row_count 쿼리" not in html
+
+
+def test_teams_card_includes_condition_query_when_set() -> None:
+    """Teams 컨테이너에도 monospace TextBlock 으로 condition_query 가 포함되어야 한다."""
+    query = "SELECT COUNT(*) FROM `prj.bw.PZEVENTID` WHERE DT = CURRENT_DATE('Asia/Seoul')"
+    row = _row(
+        "fail",
+        failure_reasons=["row count 0"],
+        condition_query=query,
+    )
+    card = build_teams_card(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    container = next(
+        b for b in card["attachments"][0]["content"]["body"]
+        if b.get("type") == "Container"
+    )
+    mono = next(
+        (item for item in container["items"] if item.get("fontType") == "Monospace"),
+        None,
+    )
+    assert mono is not None, "monospace TextBlock 으로 쿼리가 렌더되어야 한다"
+    assert "PZEVENTID" in mono["text"]
+    label_texts = [item.get("text", "") for item in container["items"]]
+    assert any("사용자 정의 row_count 쿼리" in t for t in label_texts)
+
+
+def test_teams_card_omits_condition_query_when_absent() -> None:
+    row = _row("fail", failure_reasons=["x"], condition_query=None)
+    card = build_teams_card(
+        trigger_kind="check", expected=NOW, actual=NOW, rows=[row]
+    )
+    container = next(
+        b for b in card["attachments"][0]["content"]["body"]
+        if b.get("type") == "Container"
+    )
+    label_texts = [item.get("text", "") for item in container["items"]]
+    assert not any("사용자 정의 row_count 쿼리" in t for t in label_texts)
+
+
 def test_teams_card_includes_delta_line() -> None:
     """이메일과 동일하게 Δrows · Δ% 가 한 줄에 결합되어 노출되어야 한다."""
     row = _row(
