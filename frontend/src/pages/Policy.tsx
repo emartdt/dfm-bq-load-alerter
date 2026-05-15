@@ -129,10 +129,7 @@ export function PolicyPage() {
               />
             </label>
             <label className="field">
-              <span>
-                이력 정리 시각 (KST){' '}
-                <span className="field-hint">매일 이 시각에 보관 일수 초과분 삭제</span>
-              </span>
+              <span>이력 정리 시각 (KST)</span>
               <input
                 type="time"
                 value={cleanupTime}
