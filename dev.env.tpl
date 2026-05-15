@@ -18,7 +18,7 @@ DFM_ALERT_OIDC_REDIRECT_URI=http://localhost:5173/auth/callback
 DFM_ALERT_OIDC_POST_LOGOUT_REDIRECT_URI=http://localhost:5173/
 
 # 로컬에서는 cron 미가동 (스케줄러가 reload 시마다 깨어나면 dev 잡음)
-DFM_ALERT_SCHEDULER_ENABLED=true
+DFM_ALERT_SCHEDULER_ENABLED=false
 
 # 로컬은 단일 프로세스라 PG advisory lock 기반 leader election 불필요.
 # false 로 두면 lock 경합 없이 곧바로 스케줄러를 띄운다.
