@@ -16,12 +16,12 @@ KST = ZoneInfo("Asia/Seoul")
 
 BATCH_TIME = time(5, 0)
 BUFFER_MINUTES = 30
-NOW = datetime(2026, 5, 7, 8, 0, tzinfo=KST)  # 윈도우 종료(05:30) 이후
-LOADED = datetime(2026, 5, 7, 5, 0, tzinfo=KST)  # 윈도우 [04:30, 05:30] 안
+NOW = datetime(2026, 5, 7, 8, 0, tzinfo=KST)  # 마감(05:30) 이후 검증
+LOADED = datetime(2026, 5, 7, 5, 0, tzinfo=KST)  # 오늘(KST) 적재 완료
 
 
 def _메타(*, row_count: int) -> TableMetadata:
-    """테스트용 BQ 메타데이터 빌더 (적재 시각은 윈도우 안으로 고정)."""
+    """테스트용 BQ 메타데이터 빌더 (오늘 적재 완료 상태로 고정)."""
     return TableMetadata(
         dataset="bw",
         table_name="PZEVENTID",
