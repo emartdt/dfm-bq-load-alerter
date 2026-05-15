@@ -105,13 +105,17 @@ async def cleanup_history(now: datetime | None = None) -> dict[str, int | str]:
     effect on the next cleanup tick without a redeploy. Falls back to
     ``settings.retention_days`` when the policy row is absent.
     """
+    actual = (now or datetime.now(tz=KST)).astimezone(KST)
+    log.info(
+        "[cleanup-history] cron fired (actual=%s)",
+        actual.isoformat(timespec="seconds"),
+    )
+
     sm = sessionmaker_factory()
     async with sm() as session:
         policy = await session.get(AlertPolicy, 1)
         retention_days = policy.retention_days if policy else settings.retention_days
-        cutoff = (now or datetime.now(tz=KST)).astimezone(UTC) - timedelta(
-            days=retention_days
-        )
+        cutoff = actual.astimezone(UTC) - timedelta(days=retention_days)
         snap_result = await session.execute(
             delete(CheckSnapshot).where(CheckSnapshot.checked_at < cutoff)
         )
@@ -122,7 +126,8 @@ async def cleanup_history(now: datetime | None = None) -> dict[str, int | str]:
     deleted_snapshots = snap_result.rowcount or 0
     deleted_events = event_result.rowcount or 0
     log.info(
-        "[cleanup-history] retention=%dd cutoff=%s deleted snapshots=%d events=%d",
+        "[cleanup-history] cron complete: retention=%dd cutoff=%s "
+        "deleted snapshots=%d events=%d",
         retention_days,
         cutoff.isoformat(timespec="seconds"),
         deleted_snapshots,

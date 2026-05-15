@@ -25,6 +25,13 @@ DFM_ALERT_SCHEDULER_ENABLED=false
 DFM_ALERT_LEADER_ELECTION_ENABLED=false
 
 DFM_ALERT_ENVIRONMENT=development
+
+# 로깅
+#   허용 값: CRITICAL / ERROR / WARNING / INFO / DEBUG (대소문자 무관)
+#   적용 지점: main.py 의 logging.basicConfig(level=...) — 전 모듈 루트 로거에 일괄 적용.
+#   권장:
+#     - 평상시 개발 = INFO (스케줄러 cron 로그·요청 처리 로그 정도)
+#     - 문제 추적   = DEBUG (체크 엔진 분기, 알림 dedup, ETL 조회 등 상세 로그까지)
 DFM_ALERT_LOG_LEVEL=DEBUG
 
 # dev 에서는 vite dev server (:5173) 가 React 자산을 모두 서빙한다.
