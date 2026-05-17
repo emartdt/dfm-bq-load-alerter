@@ -111,6 +111,7 @@ export function Tables() {
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(20)
+  const [isWide, setIsWide] = useState<boolean>(false)
 
   const filteredRows = useMemo(() => {
     const pj = projectQuery.trim().toLowerCase()
@@ -675,9 +676,17 @@ export function Tables() {
             필터 초기화
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => setIsWide((v) => !v)}
+          title={isWide ? '표 너비를 기본으로 줄입니다' : '표를 화면 폭에 맞춰 넓힙니다'}
+        >
+          {isWide ? '표 좁히기' : '표 넓히기'}
+        </button>
       </div>
 
-      <div className="table-scroll table-scroll--wide">
+      <div className={isWide ? 'table-scroll table-scroll--wide' : 'table-scroll'}>
       <table className="grid-table">
         <thead>
           <tr>
