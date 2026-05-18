@@ -103,3 +103,23 @@ export async function reportNow(): Promise<RunNowResponse> {
   const { data } = await api.post<RunNowResponse>('/api/checks/report-now')
   return data
 }
+
+export interface ConditionQueryPreview {
+  rendered_sql: string
+  total_bytes_processed: number | null
+  max_bytes: number
+  exceeds_budget: boolean
+}
+
+export async function previewConditionQuery(
+  query: string,
+  projectId?: string | null,
+): Promise<ConditionQueryPreview> {
+  const payload: { query: string; project_id?: string } = { query }
+  if (projectId) payload.project_id = projectId
+  const { data } = await api.post<ConditionQueryPreview>(
+    '/api/tables/condition-query/preview',
+    payload,
+  )
+  return data
+}

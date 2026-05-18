@@ -9,6 +9,10 @@ from zoneinfo import ZoneInfo
 from google.cloud import bigquery
 
 from dfm_bq_load_alerter.bq.client import get_client
+from dfm_bq_load_alerter.bq.templating import (
+    ConditionQueryTemplateError,
+    render_condition_query,
+)
 
 log = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
@@ -187,20 +191,33 @@ def _extract_scalar_int(row: object) -> int:
         ) from exc
 
 
+def render_and_validate_condition_query(query: str) -> str:
+    """Render Jinja2 template (KST now) and run the static validator.
+
+    Returns the rendered, sanitized SQL ready for BigQuery.
+    Raises ``ConditionQueryError`` for template or validation failures.
+    """
+    try:
+        rendered = render_condition_query(query)
+    except ConditionQueryTemplateError as exc:
+        raise ConditionQueryError(str(exc)) from exc
+    return _validate_condition_query(rendered)
+
+
 def run_condition_query(
     client: bigquery.Client,
     *,
     query: str,
     max_bytes: int,
 ) -> tuple[int, int | None]:
-    """Validate, dry-run, and execute a user row_count query.
+    """Render template, validate, dry-run, and execute a user row_count query.
 
     Returns ``(row_count, bytes_processed)``. ``bytes_processed`` may be None
     if the BigQuery client does not surface the value (e.g. mocked tests).
 
-    Raises ``ConditionQueryError`` for validation/budget failures.
+    Raises ``ConditionQueryError`` for template/validation/budget failures.
     """
-    sanitized = _validate_condition_query(query)
+    sanitized = render_and_validate_condition_query(query)
 
     dry_config = bigquery.QueryJobConfig(use_legacy_sql=False, dry_run=True, use_query_cache=False)
     dry_job = client.query(sanitized, job_config=dry_config)
