@@ -19,10 +19,15 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, time
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dfm_bq_load_alerter.bq.templating import (
+    ConditionQueryTemplateError,
+    render_condition_query,
+)
 from dfm_bq_load_alerter.db.models import (
     AlertEvent,
     AlertRecipient,
@@ -48,6 +53,24 @@ from dfm_bq_load_alerter.notifier.template import (
 from dfm_bq_load_alerter.settings import settings
 
 log = logging.getLogger(__name__)
+_KST = ZoneInfo("Asia/Seoul")
+
+
+def _render_condition_query_for_alert(
+    template: str | None, when: datetime | None
+) -> str | None:
+    """알람 본문에 노출할 condition_query 를 KST 기준 시각으로 렌더한다.
+
+    렌더 실패 시 raw 템플릿을 그대로 반환해, 알람 자체는 누락되지 않도록 한다.
+    """
+    if not template:
+        return None
+    now_kst = when.astimezone(_KST) if when is not None else None
+    try:
+        return render_condition_query(template, now_kst=now_kst)
+    except ConditionQueryTemplateError as exc:
+        log.warning("condition_query 렌더 실패 — raw 표시로 폴백: %s", exc)
+        return template
 
 
 @dataclass(slots=True)
@@ -371,7 +394,9 @@ async def build_dispatch_snapshots(
                     if table.buffer_minutes is not None
                     else fallback_buffer
                 ),
-                condition_query=table.condition_query,
+                condition_query=_render_condition_query_for_alert(
+                    table.condition_query, s.checked_at
+                ),
             )
         )
     return result
