@@ -5,9 +5,11 @@ import {
   createTable,
   deleteTable,
   listTables,
+  previewConditionQuery,
   reportNow,
   runNow,
   updateTable,
+  type ConditionQueryPreview,
   type RunNowResponse,
   type TableCreate,
   type TablePatch,
@@ -23,6 +25,7 @@ const EMPTY_FORM: TableCreate = {
   buffer_minutes: null,
   batch_day_of_month: null,
   delta_threshold_percent: null,
+  condition_query: null,
   note: '',
   cond_buffer_load: true,
   cond_delta_rowcount: true,
@@ -81,6 +84,7 @@ function rowToForm(row: TableRow): TableCreate {
     buffer_minutes: row.buffer_minutes,
     batch_day_of_month: row.batch_day_of_month,
     delta_threshold_percent: row.delta_threshold_percent,
+    condition_query: row.condition_query,
     note: row.note ?? '',
     cond_buffer_load: row.cond_buffer_load,
     cond_delta_rowcount: row.cond_delta_rowcount,
@@ -98,6 +102,9 @@ export function Tables() {
   const [busy, setBusy] = useState<boolean>(false)
   const [notify, setNotify] = useState<boolean>(false)
   const [lastRun, setLastRun] = useState<RunNowResponse | null>(null)
+  const [preview, setPreview] = useState<ConditionQueryPreview | null>(null)
+  const [previewError, setPreviewError] = useState<string>('')
+  const [previewBusy, setPreviewBusy] = useState<boolean>(false)
   const formRef = useRef<HTMLFormElement | null>(null)
 
   const [projectQuery, setProjectQuery] = useState<string>('')
@@ -109,6 +116,7 @@ export function Tables() {
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(20)
+  const [isWide, setIsWide] = useState<boolean>(false)
 
   const filteredRows = useMemo(() => {
     const pj = projectQuery.trim().toLowerCase()
@@ -225,12 +233,16 @@ export function Tables() {
     setForm(EMPTY_FORM)
     setEditingId(null)
     setIsFormOpen(false)
+    setPreview(null)
+    setPreviewError('')
   }
 
   const onAdd = () => {
     setForm(EMPTY_FORM)
     setEditingId(null)
     setError('')
+    setPreview(null)
+    setPreviewError('')
     setIsFormOpen(true)
   }
 
@@ -238,7 +250,29 @@ export function Tables() {
     setForm(rowToForm(row))
     setEditingId(row.id)
     setError('')
+    setPreview(null)
+    setPreviewError('')
     setIsFormOpen(true)
+  }
+
+  const onPreviewQuery = async () => {
+    const q = form.condition_query?.trim() ?? ''
+    if (!q) {
+      setPreviewError('미리볼 쿼리가 비어 있습니다.')
+      setPreview(null)
+      return
+    }
+    setPreviewBusy(true)
+    setPreviewError('')
+    setPreview(null)
+    try {
+      const result = await previewConditionQuery(q, form.project_id ?? null)
+      setPreview(result)
+    } catch (err) {
+      setPreviewError(describeError(err))
+    } finally {
+      setPreviewBusy(false)
+    }
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -263,6 +297,9 @@ export function Tables() {
           form.delta_threshold_percent === undefined
             ? null
             : Number(form.delta_threshold_percent),
+        condition_query: form.condition_query?.trim()
+          ? form.condition_query.trim()
+          : null,
         note: form.note?.trim() ? form.note.trim() : null,
         cond_buffer_load: form.cond_buffer_load ?? true,
         cond_delta_rowcount: form.cond_delta_rowcount ?? true,
@@ -511,6 +548,88 @@ export function Tables() {
           </label>
           <label className="field span-2">
             <span>
+              커스텀 row_count SQL{' '}
+              <span className="field-hint">
+                비우면 __TABLES__ 사용 · SELECT/WITH 로 시작, 단일 행·단일 정수 컬럼 ·
+                템플릿 변수 (KST): <code>{'{{ today }}'}</code>{' '}
+                <code>{'{{ yesterday }}'}</code>{' '}
+                <code>{'{{ days_ago(n) }}'}</code>{' '}
+                <code>{'{{ months_ago(n) }}'}</code>{' '}
+                <code>{'{{ now }}'}</code>
+              </span>
+            </span>
+            <textarea
+              className="sql-textarea"
+              rows={5}
+              value={form.condition_query ?? ''}
+              onChange={(e) => {
+                setForm({ ...form, condition_query: e.target.value })
+                setPreview(null)
+                setPreviewError('')
+              }}
+              placeholder={
+                'SELECT COUNT(*) FROM `project.dataset.table`\n' +
+                "WHERE DATE(load_dt) = DATE('{{ today }}')"
+              }
+              spellCheck={false}
+            />
+            <div className="btn-row" style={{ marginTop: 'var(--sp-xs, 4px)' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => void onPreviewQuery()}
+                disabled={previewBusy || !(form.condition_query?.trim())}
+                title="오늘(KST) 기준으로 템플릿을 렌더하고 dry-run 으로 처리 바이트를 추정"
+              >
+                {previewBusy ? '미리보기 중…' : '렌더 미리보기'}
+              </button>
+            </div>
+            {previewError && (
+              <p className="error" style={{ marginTop: 'var(--sp-xs, 4px)' }}>
+                {previewError}
+              </p>
+            )}
+            {preview && (
+              <div
+                className="preview-block"
+                style={{
+                  marginTop: 'var(--sp-xs, 4px)',
+                  padding: '8px 10px',
+                  background: '#0f172a',
+                  color: '#e2e8f0',
+                  borderRadius: 6,
+                  fontFamily:
+                    'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+                  fontSize: 12,
+                }}
+              >
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {preview.rendered_sql}
+                </pre>
+                <div
+                  style={{
+                    marginTop: 6,
+                    color: preview.exceeds_budget ? '#fca5a5' : '#94a3b8',
+                  }}
+                >
+                  처리 바이트:{' '}
+                  {preview.total_bytes_processed === null
+                    ? '알 수 없음'
+                    : preview.total_bytes_processed.toLocaleString()}{' '}
+                  / 한도 {preview.max_bytes.toLocaleString()}
+                  {preview.exceeds_budget && ' · 예산 초과'}
+                </div>
+              </div>
+            )}
+          </label>
+          <label className="field span-2">
+            <span>
               메모 <span className="field-hint">운영 메모, 알림 본문에 노출</span>
             </span>
             <input
@@ -649,9 +768,17 @@ export function Tables() {
             필터 초기화
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn-secondary btn-small"
+          onClick={() => setIsWide((v) => !v)}
+          title={isWide ? '표 너비를 기본으로 줄입니다' : '표를 화면 폭에 맞춰 넓힙니다'}
+        >
+          {isWide ? '표 좁히기' : '표 넓히기'}
+        </button>
       </div>
 
-      <div className="table-scroll">
+      <div className={isWide ? 'table-scroll table-scroll--wide' : 'table-scroll'}>
       <table className="grid-table">
         <thead>
           <tr>

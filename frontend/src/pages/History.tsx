@@ -98,6 +98,7 @@ export function History() {
   const [snapSortDir, setSnapSortDir] = useState<SortDir>('desc')
   const [snapPage, setSnapPage] = useState<number>(1)
   const [snapPageSize, setSnapPageSize] = useState<number>(50)
+  const [snapWide, setSnapWide] = useState<boolean>(false)
 
   const [events, setEvents] = useState<EventItem[]>([])
   const [eventsTotal, setEventsTotal] = useState<number>(0)
@@ -294,8 +295,16 @@ export function History() {
                 필터 초기화
               </button>
             )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={() => setSnapWide((v) => !v)}
+              title={snapWide ? '표 너비를 기본으로 줄입니다' : '표를 화면 폭에 맞춰 넓힙니다'}
+            >
+              {snapWide ? '표 좁히기' : '표 넓히기'}
+            </button>
           </div>
-          <div className="table-scroll">
+          <div className={snapWide ? 'table-scroll table-scroll--wide' : 'table-scroll'}>
           <table className="grid-table">
             <thead>
               <tr>

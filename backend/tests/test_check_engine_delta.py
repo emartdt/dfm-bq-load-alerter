@@ -1,7 +1,7 @@
 """evaluate(): 전일 대비 증감률 판정 (기본 시나리오).
 
-윈도우 영향이 결과에 섞이지 않도록, 모든 케이스를 "윈도우 안 적재 + 검증은
-윈도우 종료 후" 라는 동일한 적재 상태로 고정하고, row_count 만 바꾼다.
+적재 분기 영향이 결과에 섞이지 않도록, 모든 케이스를 "오늘(KST) 적재 완료 +
+row_count > 0" 라는 동일한 적재 상태로 고정하고, row_count 만 바꾼다.
 """
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ KST = ZoneInfo("Asia/Seoul")
 
 BATCH_TIME = time(5, 0)
 BUFFER_MINUTES = 30
-NOW = datetime(2026, 5, 7, 8, 0, tzinfo=KST)  # 윈도우 종료(05:30) 이후
-LOADED = datetime(2026, 5, 7, 5, 0, tzinfo=KST)  # 윈도우 [04:30, 05:30] 안
+NOW = datetime(2026, 5, 7, 8, 0, tzinfo=KST)  # 마감(05:30) 이후 검증
+LOADED = datetime(2026, 5, 7, 5, 0, tzinfo=KST)  # 오늘(KST) 적재 완료
 
 
 def _메타(*, row_count: int) -> TableMetadata:
-    """테스트용 BQ 메타데이터 빌더 (적재 시각은 윈도우 안으로 고정)."""
+    """테스트용 BQ 메타데이터 빌더 (오늘 적재 완료 상태로 고정)."""
     return TableMetadata(
         dataset="bw",
         table_name="PZEVENTID",

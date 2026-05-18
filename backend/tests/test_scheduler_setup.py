@@ -34,11 +34,11 @@ def test_build_scheduler_uses_kst_timezone() -> None:
     assert str(scheduler.timezone) == settings.scheduler_timezone
 
 
-def test_register_jobs_creates_seven_cron_triggers() -> None:
+def test_register_jobs_creates_eight_cron_triggers() -> None:
     scheduler = build_scheduler()
     register_jobs(scheduler)
     jobs = scheduler.get_jobs()
-    assert len(jobs) == 7
+    assert len(jobs) == 8
     ids = {j.id for j in jobs}
     assert ids == {
         "check-0600",
@@ -48,6 +48,7 @@ def test_register_jobs_creates_seven_cron_triggers() -> None:
         "check-0840",
         "check-0900",
         "report-0745",
+        "cleanup-history",
     }
     for job in jobs:
         assert isinstance(job.trigger, CronTrigger)
@@ -69,14 +70,14 @@ def test_report_job_uses_report_misfire_grace() -> None:
     assert report.misfire_grace_time == settings.misfire_grace_report_seconds
 
 
-def test_register_jobs_creates_seven_jobs_on_fresh_scheduler() -> None:
-    """Each new scheduler instance gets exactly 7 jobs (startup invariant)."""
+def test_register_jobs_creates_eight_jobs_on_fresh_scheduler() -> None:
+    """Each new scheduler instance gets exactly 8 jobs (startup invariant)."""
     scheduler1 = build_scheduler()
     register_jobs(scheduler1)
     scheduler2 = build_scheduler()
     register_jobs(scheduler2)
-    assert len(scheduler1.get_jobs()) == 7
-    assert len(scheduler2.get_jobs()) == 7
+    assert len(scheduler1.get_jobs()) == 8
+    assert len(scheduler2.get_jobs()) == 8
 
 
 @pytest.mark.parametrize(

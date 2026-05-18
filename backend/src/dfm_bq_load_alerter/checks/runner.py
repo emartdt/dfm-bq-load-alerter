@@ -78,6 +78,8 @@ async def _baseline_snapshot(
 
 async def _fetch_metadatas_parallel(
     tables: list[Table],
+    *,
+    row_count_query_max_bytes: int,
 ) -> list[TableMetadata | BaseException]:
     """Call BigQuery `fetch_metadata` for each table concurrently.
 
@@ -116,6 +118,8 @@ async def _fetch_metadatas_parallel(
                     table.dataset,
                     table.table_name,
                     project_id=table.project_id,
+                    row_count_query=table.condition_query,
+                    row_count_query_max_bytes=row_count_query_max_bytes,
                 )
             except Exception:
                 fail_count += 1
@@ -168,6 +172,11 @@ async def run_checks(
     default_buffer = (
         policy.default_buffer_minutes if policy is not None else 30
     )
+    row_count_query_max_bytes = (
+        policy.condition_query_max_bytes
+        if policy is not None
+        else settings.condition_query_max_bytes
+    )
 
     stmt = select(Table).where(Table.active.is_(True))
     if table_ids:
@@ -187,7 +196,9 @@ async def run_checks(
             continue
         eligible.append(table)
 
-    metadatas = await _fetch_metadatas_parallel(eligible)
+    metadatas = await _fetch_metadatas_parallel(
+        eligible, row_count_query_max_bytes=row_count_query_max_bytes
+    )
 
     snapshots: list[CheckSnapshot] = []
     for table, metadata in zip(eligible, metadatas, strict=True):
@@ -214,6 +225,14 @@ async def run_checks(
                 BqQueryLog(
                     table_id=table.id,
                     query_kind="count_fallback",
+                    note=f"{table.dataset}.{table.table_name}",
+                )
+            )
+        if table.condition_query is not None:
+            session.add(
+                BqQueryLog(
+                    table_id=table.id,
+                    query_kind="condition_query",
                     note=f"{table.dataset}.{table.table_name}",
                 )
             )

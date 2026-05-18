@@ -24,6 +24,7 @@ class PolicyOut(BaseModel):
 
     check_times: list[str]
     report_time: time
+    cleanup_time: time
     dedup_strategy: str
     default_threshold_percent: float
     retention_days: int
@@ -40,6 +41,7 @@ class PolicyPatch(BaseModel):
         description='HH:MM strings, e.g. ["06:00","07:00","08:00"]',
     )
     report_time: time | None = None
+    cleanup_time: time | None = None
     dedup_strategy: str | None = Field(default=None, max_length=32)
     default_threshold_percent: float | None = Field(default=None, gt=0, le=100)
     retention_days: int | None = Field(default=None, ge=1, le=3650)
@@ -72,6 +74,7 @@ async def _get_or_create(session: AsyncSession) -> AlertPolicy:
                 "09:00",
             ],
             report_time=time(7, 45),
+            cleanup_time=time(3, 0),
             dedup_strategy="every-hour-resend",
             default_threshold_percent=25.0,
             retention_days=90,
@@ -88,6 +91,7 @@ def _serialize(policy: AlertPolicy) -> PolicyOut:
     return PolicyOut(
         check_times=list(policy.check_times),
         report_time=policy.report_time,
+        cleanup_time=policy.cleanup_time,
         dedup_strategy=policy.dedup_strategy,
         default_threshold_percent=float(policy.default_threshold_percent),
         retention_days=policy.retention_days,

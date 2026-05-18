@@ -144,8 +144,10 @@ class Table(Base):
         Text,
         nullable=True,
         comment=(
-            "사용자 정의 SQL 조건식 (BigQuery 표준 SQL). "
-            "쿼리 결과가 1행 이상이면 FAIL 로 판정."
+            "사용자 정의 row_count 산출 SQL (BigQuery 표준 SQL). "
+            "NULL 이면 __TABLES__.row_count 를 사용. 값이 있으면 SELECT/WITH 로 시작하는 "
+            "단일 행·단일 정수 컬럼 쿼리를 실행해 그 결과를 row_count 로 사용한다. "
+            "alert_policy.condition_query_max_bytes 처리량 상한 적용."
         ),
     )
     note: Mapped[str | None] = mapped_column(
@@ -559,6 +561,15 @@ class AlertPolicy(Base):
         Time,
         nullable=False,
         comment="일일 리포트 송신 시각 (KST).",
+    )
+    cleanup_time: Mapped[time] = mapped_column(
+        Time,
+        nullable=False,
+        server_default="03:00",
+        comment=(
+            "이력 정리(cleanup) 잡의 실행 시각 (KST). "
+            "retention_days 보다 오래된 check_snapshots/alert_events 를 삭제한다."
+        ),
     )
     dedup_strategy: Mapped[str] = mapped_column(
         String(32),

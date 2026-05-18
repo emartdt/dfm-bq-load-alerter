@@ -19,6 +19,7 @@ export function PolicyPage() {
 
   const [checkTimes, setCheckTimes] = useState<string>('')
   const [reportTime, setReportTime] = useState<string>('07:45')
+  const [cleanupTime, setCleanupTime] = useState<string>('03:00')
   const [defaultThreshold, setDefaultThreshold] = useState<string>('25')
   const [retentionDays, setRetentionDays] = useState<string>('90')
   const [defaultBuffer, setDefaultBuffer] = useState<string>('30')
@@ -30,6 +31,7 @@ export function PolicyPage() {
       setPolicy(p)
       setCheckTimes(p.check_times.join(', '))
       setReportTime(p.report_time.slice(0, 5))
+      setCleanupTime(p.cleanup_time.slice(0, 5))
       setDefaultThreshold(String(p.default_threshold_percent))
       setRetentionDays(String(p.retention_days))
       setDefaultBuffer(String(p.default_buffer_minutes))
@@ -54,6 +56,7 @@ export function PolicyPage() {
           .map((s) => s.trim())
           .filter(Boolean),
         report_time: reportTime,
+        cleanup_time: cleanupTime,
         default_threshold_percent: Number(defaultThreshold),
         retention_days: Number(retentionDays),
         default_buffer_minutes: Number(defaultBuffer),
@@ -123,6 +126,14 @@ export function PolicyPage() {
                 max={3650}
                 value={retentionDays}
                 onChange={(e) => setRetentionDays(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>이력 정리 시각 (KST)</span>
+              <input
+                type="time"
+                value={cleanupTime}
+                onChange={(e) => setCleanupTime(e.target.value)}
               />
             </label>
             <label className="field">
