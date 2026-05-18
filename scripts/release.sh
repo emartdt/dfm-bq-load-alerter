@@ -174,16 +174,19 @@ check_prereqs() {
   [[ "${local_dev}" == "${remote_dev}" ]] \
     || die "로컬 dev 가 ${REMOTE}/dev 와 다름. git pull 후 재실행"
 
-  # 태그 중복
+  # 태그 중복 — 멱등 실행을 위해 정보성으로 변경 (step_release 가 자체 skip 처리)
   if git rev-parse "${TAG}" >/dev/null 2>&1; then
-    die "태그 ${TAG} 이미 존재"
+    warn "태그 ${TAG} 이미 존재 — Release 단계는 skip 됩니다"
   fi
 
-  # 변경 사항 존재
+  # 변경 사항 존재 — ahead 0 은 pr1 단계 skip 신호로만 사용 (멱등)
   local ahead
   ahead="$(git rev-list --count "${REMOTE}/main..${REMOTE}/dev")"
-  [[ "${ahead}" -gt 0 ]] || die "${REMOTE}/dev 가 ${REMOTE}/main 대비 ahead 0 — 릴리스 대상 없음"
-  ok "dev 가 main 대비 ${ahead} 커밋 ahead"
+  if [[ "${ahead}" -eq 0 ]]; then
+    warn "${REMOTE}/dev 가 ${REMOTE}/main 대비 ahead 0 — pr1 단계 skip 예정"
+  else
+    ok "dev 가 main 대비 ${ahead} 커밋 ahead"
+  fi
 
   ok "사전 검증 통과"
 }
@@ -275,6 +278,18 @@ generate_release_notes() {
 step_pr1() {
   step "단계 2/4: 릴리스 PR (dev → main) 생성 및 머지"
 
+  # 멱등성: dev 가 이미 main 의 ancestor 이고 main 도 ${TAG} 면 skip
+  run "git fetch ${REMOTE} --prune"
+  if git merge-base --is-ancestor "${REMOTE}/dev" "${REMOTE}/main" 2>/dev/null; then
+    local main_py_ver
+    main_py_ver="$(git show ${REMOTE}/main:backend/pyproject.toml \
+      | sed -nE 's|^version = "(.*)"|\1|p' | head -1)"
+    if [[ "${main_py_ver}" == "${VERSION}" ]]; then
+      ok "dev 가 이미 ${REMOTE}/main 에 반영, main 버전 ${TAG} — PR 단계 skip (멱등)"
+      return 0
+    fi
+  fi
+
   local prev_tag
   prev_tag="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
   [[ -n "${prev_tag}" ]] || die "이전 릴리스 태그 미발견"
@@ -321,12 +336,26 @@ step_pr1() {
 # 단계 2 의 dev → main 릴리스 PR 에 포함되어, main 과 dev 의 버전 파일이 늘
 # 동일하게 유지된다.
 
+_versions_match_tag() {
+  # dev 의 버전 파일 두 개가 모두 ${VERSION} 인지
+  local py_ver pkg_ver
+  py_ver="$(sed -nE 's|^version = "(.*)"|\1|p' backend/pyproject.toml | head -1)"
+  pkg_ver="$(sed -nE 's|.*"version": "([^"]+)".*|\1|p' frontend/package.json | head -1)"
+  [[ "${py_ver}" == "${VERSION}" && "${pkg_ver}" == "${VERSION}" ]]
+}
+
 step_bump() {
   step "단계 1/4: 버전 bump PR (${BUMP_BRANCH} → dev)"
 
   run "git fetch ${REMOTE}"
   run "git checkout dev"
   run "git pull ${REMOTE} dev"
+
+  # 멱등성: dev 가 이미 ${TAG} 면 단계 자체 skip
+  if _versions_match_tag; then
+    ok "dev 가 이미 ${TAG} — bump 단계 skip (멱등)"
+    return 0
+  fi
 
   if git show-ref --verify --quiet "refs/heads/${BUMP_BRANCH}"; then
     warn "로컬 브랜치 ${BUMP_BRANCH} 이미 존재 — 강제 재생성"
@@ -416,13 +445,19 @@ bump_file() {
   if [[ "${DRY_RUN}" == "1" ]]; then
     return 0
   fi
+  # 패턴이 한 번도 매치되지 않으면 파일 구조가 변한 신호 → die
+  if ! grep -E -q "${pattern}" "${path}"; then
+    die "패턴 매치 실패 (파일 구조 변경?): ${path} / ${pattern}"
+  fi
   # 플랫폼 무관 inplace edit
   local tmp; tmp="$(mktemp -t bump.XXXXXX)"
   if ! sed -E "s|${pattern}|${replacement}|" "${path}" > "${tmp}"; then
     rm -f "${tmp}"; die "sed 치환 실패: ${path}"
   fi
+  # 멱등성: 이미 target 값이면 그대로 통과 (재실행 안전)
   if cmp -s "${path}" "${tmp}"; then
-    rm -f "${tmp}"; die "치환된 내용이 없음 (패턴 매치 실패): ${path} / ${pattern}"
+    rm -f "${tmp}"; info "    (이미 ${replacement} — 변경 없음)"
+    return 0
   fi
   mv "${tmp}" "${path}"
 }
@@ -479,6 +514,13 @@ step_migrate() {
 
 step_release() {
   step "단계 4/4: GitHub Release ${TAG} 생성"
+
+  # 멱등성: 태그가 이미 원격에 있으면 skip (Release 도 함께 만들어졌다고 가정)
+  run "git fetch ${REMOTE} --tags"
+  if git rev-parse "${TAG}" >/dev/null 2>&1; then
+    ok "태그 ${TAG} 이미 존재 — Release 단계 skip (멱등). 필요 시 'gh release view ${TAG}' 로 확인"
+    return 0
+  fi
 
   # 태그 대상은 머지된 main HEAD
   local main_sha; main_sha="$(git rev-parse "${REMOTE}/main")"
