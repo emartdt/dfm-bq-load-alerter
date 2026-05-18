@@ -186,9 +186,56 @@ check_prereqs() {
 # 릴리스 노트 생성
 # ============================================================================
 
+_bucket_label() {
+  # bash 3.2 호환: 연관 배열 대신 case 로 라벨 매핑
+  case "$1" in
+    feat)     echo "✨ 기능" ;;
+    fix)      echo "🐛 버그 수정" ;;
+    refactor) echo "♻️  리팩터링" ;;
+    perf)     echo "⚡ 성능" ;;
+    test)     echo "✅ 테스트" ;;
+    docs)     echo "📚 문서" ;;
+    chore)    echo "🔧 잡일" ;;
+    style)    echo "🎨 스타일" ;;
+    build)    echo "📦 빌드" ;;
+    ci)       echo "🤖 CI" ;;
+    *)        echo "기타" ;;
+  esac
+}
+
 generate_release_notes() {
   local prev_tag="$1" out="$2"
   local range="${prev_tag}..${REMOTE}/dev"
+
+  # 이전 태그의 커밋 날짜를 cutoff 로 사용. squash 머지 패턴 때문에
+  # `prev_tag..origin/dev` 만으로는 과거 릴리스의 commit 까지 포함될 수 있다
+  # (예: PR #33 이 squash 되어 v0.8.0 ancestry 에 없지만 dev 에는 남아 있음).
+  # 시간 기준 필터로 진짜 신규 commit 만 노출.
+  local prev_date
+  prev_date="$(git log -1 --format=%cI "${prev_tag}")"
+
+  # 타입별 버킷을 임시 디렉토리 파일로 보관 (bash 3.2 호환 — 연관 배열 미사용)
+  local bucket_dir; bucket_dir="$(mktemp -d -t relnotes.XXXXXX)"
+  # 함수 종료 시 정리. ${bucket_dir} 은 trap 정의 시점에 expand 되어야 한다
+  # (RETURN 시점엔 local 변수 범위가 끝나므로). SC2064 의도된 동작.
+  # shellcheck disable=SC2064
+  trap "rm -rf '${bucket_dir}'" RETURN
+
+  local sha subj type
+  while IFS=$'\t' read -r sha subj; do
+    if [[ "${subj}" =~ ^([a-z]+)(\(.*\))?: ]]; then
+      type="${BASH_REMATCH[1]}"
+    else
+      type="other"
+    fi
+    # 알 수 없는 타입은 other 로 정규화
+    case "${type}" in
+      feat|fix|refactor|perf|test|docs|chore|style|build|ci) ;;
+      *) type="other" ;;
+    esac
+    printf -- '- %s (%s)\n' "${subj}" "${sha}" >> "${bucket_dir}/${type}"
+  done < <(git log --no-merges --since="${prev_date}" \
+            --format='%h%x09%s' "${range}")
 
   {
     echo "## ${TAG} 릴리스"
@@ -196,39 +243,13 @@ generate_release_notes() {
     echo "이전 릴리스 \`${prev_tag}\` 대비 변경 사항."
     echo
 
-    # 커밋 타입별 그룹핑
-    declare -A buckets
-    while IFS=$'\t' read -r sha subj; do
-      local type
-      if [[ "${subj}" =~ ^([a-z]+)(\(.*\))?: ]]; then
-        type="${BASH_REMATCH[1]}"
-      else
-        type="other"
-      fi
-      buckets[${type}]+="- ${subj} (${sha})"$'\n'
-    done < <(git log --no-merges --format='%h%x09%s' "${range}")
-
-    local order=(feat fix refactor perf test docs chore style build ci other)
-    declare -A labels=(
-      [feat]="✨ 기능"
-      [fix]="🐛 버그 수정"
-      [refactor]="♻️  리팩터링"
-      [perf]="⚡ 성능"
-      [test]="✅ 테스트"
-      [docs]="📚 문서"
-      [chore]="🔧 잡일"
-      [style]="🎨 스타일"
-      [build]="📦 빌드"
-      [ci]="🤖 CI"
-      [other]="기타"
-    )
-
     local t
-    for t in "${order[@]}"; do
-      if [[ -n "${buckets[${t}]:-}" ]]; then
-        echo "### ${labels[${t}]}"
+    for t in feat fix refactor perf test docs chore style build ci other; do
+      if [[ -s "${bucket_dir}/${t}" ]]; then
+        echo "### $(_bucket_label "${t}")"
         echo
-        echo "${buckets[${t}]}"
+        cat "${bucket_dir}/${t}"
+        echo
       fi
     done
 
@@ -271,6 +292,8 @@ step_pr1() {
       --title 'release: dev → main · ${TAG}' \
       --body-file '${notes_file}'"
     pr_number="$(gh pr list --base main --head dev --state open --json number --jq '.[0].number // ""')"
+    # dry-run 에선 실제로 PR 이 만들어지지 않으므로 자리표시자 사용
+    [[ -n "${pr_number}" || "${DRY_RUN}" != "1" ]] || pr_number="DRY"
   fi
   [[ -n "${pr_number}" ]] || die "PR 번호 조회 실패"
   ok "PR #${pr_number}"
@@ -358,6 +381,7 @@ EOF
     run "gh pr create --base main --head '${BUMP_BRANCH}' \
       --title '${title}' --body-file '${body_file}'"
     pr_number="$(gh pr list --base main --head "${BUMP_BRANCH}" --state open --json number --jq '.[0].number // ""')"
+    [[ -n "${pr_number}" || "${DRY_RUN}" != "1" ]] || pr_number="DRY"
   fi
   [[ -n "${pr_number}" ]] || die "bump PR 번호 조회 실패"
   ok "bump PR #${pr_number}"
