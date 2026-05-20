@@ -33,7 +33,7 @@ class Frequency(enum.StrEnum):
 class CheckStatus(enum.StrEnum):
     ok = "ok"
     fail = "fail"
-    insufficient_history = "insufficient_history"
+    skip = "skip"
 
 
 class TriggerKind(enum.StrEnum):
@@ -278,7 +278,10 @@ class CheckSnapshot(Base):
     status: Mapped[CheckStatus] = mapped_column(
         Enum(CheckStatus, name="check_status_enum"),
         nullable=False,
-        comment="체크 결과. ok=정상, fail=실패, insufficient_history=비교 가능 이력 부족.",
+        comment=(
+            "체크 결과. ok=정상, fail=실패, "
+            "skip=마감(batch_time+buffer) 이전 미적재로 판정 보류."
+        ),
     )
     failure_reasons: Mapped[list[str]] = mapped_column(
         JSONB,
@@ -475,7 +478,7 @@ class ReportRun(Base):
         server_default="{}",
         comment=(
             "상태별 테이블 카운트 요약 (JSONB). "
-            '예: {"ok": 12, "fail": 3, "insufficient_history": 1}.'
+            '예: {"ok": 12, "fail": 3, "skip": 1}.'
         ),
     )
     sent_to: Mapped[list[str]] = mapped_column(

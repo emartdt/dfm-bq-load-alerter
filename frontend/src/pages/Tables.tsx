@@ -35,7 +35,7 @@ const EMPTY_FORM: TableCreate = {
 const STATUS_LABEL: Record<string, string> = {
   ok: '정상',
   fail: '실패',
-  insufficient_history: '이력 부족',
+  skip: '판정 보류',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const

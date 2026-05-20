@@ -99,8 +99,12 @@ def test_마감_이후_어제까지만_적재되어_있으면_FAIL이다() -> No
     assert "오늘 미적재" in result.failure_reasons
 
 
-def test_마감_이전에는_미적재여도_FAIL이_아니다() -> None:
-    """검증 시각이 마감(05:30) 이전이면 적재 대기 중 — FAIL 단정 불가."""
+def test_마감_이전_미적재는_SKIP이다() -> None:
+    """검증 시각이 마감(05:30) 이전이고 오늘 미적재 → 판정 보류(SKIP).
+
+    구버전은 FAIL 단정만 회피하고 OK 로 분류했으나, 사양상 이 케이스는
+    배치 도착 여지가 남아 있는 보류 상태이므로 별도 SKIP 으로 표기한다.
+    """
     now = datetime(2026, 5, 7, 5, 0, tzinfo=KST)
     result = evaluate(
         _메타(last_modified=None, row_count=None),
@@ -110,7 +114,23 @@ def test_마감_이전에는_미적재여도_FAIL이_아니다() -> None:
         buffer_minutes=BUFFER_MINUTES,
         now=now,
     )
-    assert result.status == CheckStatus.ok
+    assert result.status == CheckStatus.skip
+    assert result.failure_reasons == []
+
+
+def test_마감_이전_어제까지만_적재된_경우도_SKIP이다() -> None:
+    """오늘 미적재 + 어제만 last_modified 가 있는 케이스도 마감 이전이면 SKIP."""
+    now = datetime(2026, 5, 7, 5, 0, tzinfo=KST)
+    loaded_yesterday = datetime(2026, 5, 6, 5, 0, tzinfo=KST)
+    result = evaluate(
+        _메타(last_modified=loaded_yesterday, row_count=1000),
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
+        now=now,
+    )
+    assert result.status == CheckStatus.skip
     assert result.failure_reasons == []
 
 

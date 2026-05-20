@@ -65,7 +65,7 @@ class TemplateRow:
     yesterday_row_count: int | None
     today_row_count: int | None
     delta_percent_vs_yesterday: float | None
-    status: str  # 'ok' | 'fail' | 'insufficient_history'
+    status: str  # 'ok' | 'fail' | 'skip'
     failure_reasons: list[str]
     note: str | None = None
     today_last_modified: datetime | None = None
@@ -92,8 +92,8 @@ class TemplateRow:
 _STATUS_META = {
     "fail": {"label": "FAIL", "bg": "#fdecea", "fg": "#c62828", "accent": "#c62828"},
     "ok": {"label": "OK", "bg": "#e8f5e9", "fg": "#2e7d32", "accent": "#2e7d32"},
-    "insufficient_history": {
-        "label": "INSUFFICIENT",
+    "skip": {
+        "label": "SKIP",
         "bg": "#fff4e5",
         "fg": "#b26a00",
         "accent": "#f57c00",
@@ -206,7 +206,7 @@ _HTML_TEMPLATE = _env.from_string(
     </div>
     <div style="margin-top:12px;">
       {% if fail_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fdecea;color:#c62828;margin-right:6px;">FAIL {{ fail_rows|length }}</span>{% endif %}
-      {% if insufficient_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fff4e5;color:#b26a00;margin-right:6px;">INSUFFICIENT {{ insufficient_rows|length }}</span>{% endif %}
+      {% if skip_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fff4e5;color:#b26a00;margin-right:6px;">SKIP {{ skip_rows|length }}</span>{% endif %}
       {% if ok_rows and trigger_kind == "report" %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#e8f5e9;color:#2e7d32;">OK {{ ok_rows|length }}</span>{% endif %}
     </div>
   </div>
@@ -216,9 +216,9 @@ _HTML_TEMPLATE = _env.from_string(
   {% for r in fail_rows %}{{ render_card(r, "fail") }}{% endfor %}
   {% endif %}
 
-  {% if insufficient_rows %}
-  <h3 style="margin:24px 4px 12px;color:#b26a00;font-size:15px;letter-spacing:0.02em;">INSUFFICIENT HISTORY ({{ insufficient_rows|length }})</h3>
-  {% for r in insufficient_rows %}{{ render_card(r, "insufficient_history") }}{% endfor %}
+  {% if skip_rows %}
+  <h3 style="margin:24px 4px 12px;color:#b26a00;font-size:15px;letter-spacing:0.02em;">SKIP ({{ skip_rows|length }})</h3>
+  {% for r in skip_rows %}{{ render_card(r, "skip") }}{% endfor %}
   {% endif %}
 
   {% if ok_rows and trigger_kind == "report" %}
@@ -236,9 +236,9 @@ def _bucket_rows(
     rows: list[TemplateRow],
 ) -> tuple[list[TemplateRow], list[TemplateRow], list[TemplateRow]]:
     fail = [r for r in rows if r.status == "fail"]
-    insufficient = [r for r in rows if r.status == "insufficient_history"]
+    skip = [r for r in rows if r.status == "skip"]
     ok = [r for r in rows if r.status == "ok"]
-    return fail, insufficient, ok
+    return fail, skip, ok
 
 
 def build_email_subject(*, trigger_kind: str, fail_count: int, expected: datetime) -> str:
@@ -250,13 +250,13 @@ def build_email_subject(*, trigger_kind: str, fail_count: int, expected: datetim
 def build_email_html(
     *, trigger_kind: str, expected: datetime, actual: datetime, rows: list[TemplateRow]
 ) -> tuple[str, str]:
-    fail, insufficient, ok = _bucket_rows(rows)
+    fail, skip, ok = _bucket_rows(rows)
     subject = build_email_subject(
         trigger_kind=trigger_kind, fail_count=len(fail), expected=expected
     )
     if fail:
         banner_accent = "#c62828"
-    elif insufficient:
+    elif skip:
         banner_accent = "#f57c00"
     else:
         banner_accent = "#2e7d32"
@@ -269,7 +269,7 @@ def build_email_html(
         expected_kst=_to_kst(expected),
         actual_kst=_to_kst(actual),
         fail_rows=fail,
-        insufficient_rows=insufficient,
+        skip_rows=skip,
         ok_rows=ok,
     )
     return subject, html
@@ -303,7 +303,7 @@ def _card_title_columns(r: TemplateRow, status: str) -> dict[str, Any]:
                         "weight": "Bolder",
                         "color": "Attention"
                         if status == "fail"
-                        else ("Warning" if status == "insufficient_history" else "Good"),
+                        else ("Warning" if status == "skip" else "Good"),
                         "horizontalAlignment": "Right",
                     }
                 ],
@@ -399,7 +399,7 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
     container_style = (
         "attention"
         if status == "fail"
-        else ("warning" if status == "insufficient_history" else "good")
+        else ("warning" if status == "skip" else "good")
     )
     items: list[dict[str, Any]] = [
         _card_title_columns(r, status),
@@ -478,7 +478,7 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
 
 
 def _pill_columns(
-    fail_count: int, insufficient_count: int, ok_count: int, trigger_kind: str
+    fail_count: int, skip_count: int, ok_count: int, trigger_kind: str
 ) -> dict[str, Any] | None:
     """이메일 헤더의 상태 pill 행과 동치 — Container.style 로 색상을 표현한다."""
     cols: list[dict[str, Any]] = []
@@ -501,8 +501,8 @@ def _pill_columns(
 
     if fail_count:
         cols.append(_pill("FAIL", fail_count, "attention"))
-    if insufficient_count:
-        cols.append(_pill("INSUFFICIENT", insufficient_count, "warning"))
+    if skip_count:
+        cols.append(_pill("SKIP", skip_count, "warning"))
     if ok_count and trigger_kind == "report":
         cols.append(_pill("OK", ok_count, "good"))
     if not cols:
@@ -610,7 +610,7 @@ def build_teams_card(
     레이아웃은 이메일 HTML 과 동치 — 헤더(트리거 라벨 + 제목 + 예정/실측 KST + 상태 pill)
     이후 카드별 (제목 + 상태 + 배치 메타 라인 + 2단 비교 + 단일 증감 라인 + 사유/노트).
     """
-    fail, insufficient, ok = _bucket_rows(rows)
+    fail, skip, ok = _bucket_rows(rows)
     summary = build_email_subject(
         trigger_kind=trigger_kind, fail_count=len(fail), expected=expected
     )
@@ -642,7 +642,7 @@ def build_teams_card(
             "wrap": True,
         },
     ]
-    pill_row = _pill_columns(len(fail), len(insufficient), len(ok), trigger_kind)
+    pill_row = _pill_columns(len(fail), len(skip), len(ok), trigger_kind)
     if pill_row is not None:
         body.append(pill_row)
 
@@ -659,18 +659,18 @@ def build_teams_card(
         for r in fail:
             body.append(_build_card_container(r, "fail"))
 
-    if insufficient:
+    if skip:
         body.append(
             {
                 "type": "TextBlock",
                 "weight": "Bolder",
                 "color": "Warning",
-                "text": f"INSUFFICIENT HISTORY ({len(insufficient)})",
+                "text": f"SKIP ({len(skip)})",
                 "separator": True,
             }
         )
-        for r in insufficient:
-            body.append(_build_card_container(r, "insufficient_history"))
+        for r in skip:
+            body.append(_build_card_container(r, "skip"))
 
     if ok and trigger_kind == "report":
         body.append(
@@ -682,7 +682,7 @@ def build_teams_card(
                 "separator": True,
             }
         )
-        # 리포트의 OK 행도 FAIL/INSUFFICIENT 와 동일한 풀 컨테이너로 렌더 —
+        # 리포트의 OK 행도 FAIL/SKIP 와 동일한 풀 컨테이너로 렌더 —
         # 프로젝트·데이터셋·테이블·배치 메타·이전/금일 row count + 유입 시각·
         # 증감(Δrows, Δ%) 까지 모두 노출. body 최상위에 평탄하게 펼쳐서
         # 큰 리포트일 때 build_teams_cards 가 청크 단위로 분할할 수 있게 한다.

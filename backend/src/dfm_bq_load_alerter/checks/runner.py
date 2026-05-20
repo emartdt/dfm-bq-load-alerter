@@ -55,8 +55,8 @@ async def _baseline_snapshot(
     - Monthly tables → most recent snapshot from the previous calendar
       month in KST (typically the previous month's batch_day_of_month run).
 
-    INSUFFICIENT_HISTORY rows are skipped so the baseline reflects an
-    actual completed load.
+    SKIP 스냅샷(마감 이전 미적재 판정 보류)은 row_count/last_modified 가
+    실제 적재를 반영하지 않으므로 비교 베이스라인에서 제외한다.
     """
     if frequency == Frequency.monthly:
         start, end = _previous_month_window(today)
@@ -69,7 +69,7 @@ async def _baseline_snapshot(
         .where(CheckSnapshot.table_id == table_id)
         .where(CheckSnapshot.checked_at >= start)
         .where(CheckSnapshot.checked_at < end)
-        .where(CheckSnapshot.status != CheckStatus.insufficient_history)
+        .where(CheckSnapshot.status != CheckStatus.skip)
         .order_by(CheckSnapshot.checked_at.desc())
         .limit(1)
     )

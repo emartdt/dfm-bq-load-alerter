@@ -59,7 +59,7 @@ export interface RunNowSnapshot {
   expected_check_time: string
   row_count: number | null
   last_modified: string | null
-  status: 'ok' | 'fail' | 'insufficient_history'
+  status: 'ok' | 'fail' | 'skip'
   failure_reasons: string[]
   delta_percent_vs_yesterday: number | null
 }

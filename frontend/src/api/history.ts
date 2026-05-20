@@ -1,6 +1,6 @@
 import { api } from './client'
 
-export type SnapshotStatus = 'ok' | 'fail' | 'insufficient_history'
+export type SnapshotStatus = 'ok' | 'fail' | 'skip'
 export type EventChannel = 'email' | 'teams' | 'ack'
 export type EventStatus = 'sent' | 'failed' | 'skipped'
 export type TriggerKind = 'check' | 'report' | 'ack'
