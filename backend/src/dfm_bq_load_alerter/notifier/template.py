@@ -102,13 +102,8 @@ _STATUS_META = {
 
 
 def _delta_color(p: float | None) -> str:
-    if p is None:
-        return "#6b7280"
-    if p > 0:
-        return "#2e7d32"
-    if p < 0:
-        return "#c62828"
-    return "#6b7280"
+    # 증감 부호와 무관하게 기본 본문 색상(중성 회색) 으로 표시한다.
+    return "#374151"
 
 
 _env.globals["status_meta"] = _STATUS_META
@@ -368,23 +363,17 @@ def _card_meta_line(r: TemplateRow) -> dict[str, Any]:
 
 
 def _card_delta_line(r: TemplateRow) -> dict[str, Any]:
-    """이메일의 '증감 Δ ±N rows · ±X.XX%' 단일 박스에 대응하는 단일 라인."""
-    p = r.delta_percent_vs_yesterday
-    if p is None:
-        color = "Default"
-    elif p > 0:
-        color = "Good"
-    elif p < 0:
-        color = "Attention"
-    else:
-        color = "Default"
+    """이메일의 '증감 Δ ±N rows · ±X.XX%' 단일 박스에 대응하는 단일 라인.
+
+    증감 부호와 무관하게 기본 본문 색상('Default') 으로 통일한다.
+    """
     return {
         "type": "TextBlock",
         "text": (
             f"증감  **Δ {_signed_count(r.delta_count)} rows · "
             f"{_signed_percent(r.delta_percent_vs_yesterday)}**"
         ),
-        "color": color,
+        "color": "Default",
         "weight": "Bolder",
         "spacing": "Small",
         "wrap": True,
