@@ -1,8 +1,8 @@
 """SKIP 상태의 점검/리포트 알림 본문을 파일로 렌더해 눈으로 확인한다.
 
-DB·SMTP·Teams Webhook 없이 동작한다. dispatcher 의 트리거별 필터링
-(check 에서는 SKIP 제외, report 에서는 포함) 효과를 실제 HTML/Teams 카드
-페이로드로 시각화한다.
+DB·SMTP·Teams Webhook 없이 동작한다. dispatcher 의 필터링
+(check·report 모두 SKIP 제외) 효과를 실제 HTML/Teams 카드 페이로드로
+시각화한다.
 
 사용법:
     uv run python scripts/preview_skip_alert.py
@@ -94,12 +94,9 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for trigger in ("check", "report"):
-        # dispatcher.dispatch() 의 필터링 규칙을 그대로 재현.
-        filtered = (
-            [s for s in SNAPSHOTS if s.status != CheckStatus.skip]
-            if trigger == "check"
-            else list(SNAPSHOTS)
-        )
+        # dispatcher.dispatch() 의 필터링 규칙을 그대로 재현 — check·report
+        # 모두 SKIP 은 본문에서 제외한다.
+        filtered = [s for s in SNAPSHOTS if s.status != CheckStatus.skip]
         rows = [_to_template_row(s) for s in filtered]
 
         subject, html = build_email_html(

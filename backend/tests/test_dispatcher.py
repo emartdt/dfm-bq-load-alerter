@@ -218,8 +218,8 @@ async def test_check_trigger_skip_does_not_leak_into_fail_email(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_report_trigger_includes_skip_rows(monkeypatch) -> None:
-    """일일 리포트(report): SKIP 스냅샷도 본문에 SKIP 섹션으로 노출된다."""
+async def test_report_trigger_excludes_skip_rows(monkeypatch) -> None:
+    """일일 리포트(report): SKIP 스냅샷도 본문에서 제외된다."""
     session = _build_session(recipients=["a@example.com"])
     captured: dict[str, str] = {}
 
@@ -241,9 +241,30 @@ async def test_report_trigger_includes_skip_rows(monkeypatch) -> None:
         actual=NOW,
     )
     assert sent == 1
-    assert "SKIP_T" in captured["html"]
-    assert "SKIP (1)" in captured["html"]
     assert "OK_T" in captured["html"]
+    assert "SKIP_T" not in captured["html"]
+    assert "SKIP" not in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_report_trigger_skipped_when_all_skip(monkeypatch) -> None:
+    """일일 리포트(report): 모든 스냅샷이 SKIP 이면 발송 자체를 건너뛴다."""
+    session = _build_session(recipients=["a@example.com"])
+    sent_email = AsyncMock()
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", sent_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[_snap(CheckStatus.skip, table="SKIP_T")],
+        trigger_kind="report",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 0
+    sent_email.assert_not_awaited()
+    session.add.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -180,12 +180,10 @@ async def dispatch(
 
     Returns the total number of `alert_events` rows added (sent + failed + skipped).
 
-    SKIP 스냅샷(마감 이전 미적재로 판정 보류)은 점검 알림(check)에서는 노이즈이므로
-    본문에서 제외하고, 일일 리포트(report)에서는 운영자가 보류 상태를 인지할 수
-    있도록 그대로 포함한다.
+    SKIP 스냅샷(마감 이전 미적재로 판정 보류)은 점검 알림(check)·일일 리포트(report)
+    모두에서 본문 노이즈이므로 알람에서 제외한다.
     """
-    if trigger_kind == "check":
-        snapshots = [s for s in snapshots if s.status != CheckStatus.skip]
+    snapshots = [s for s in snapshots if s.status != CheckStatus.skip]
     if not snapshots and trigger_kind == "report":
         log.info("dispatch skipped: empty snapshot list for trigger=report")
         return 0
