@@ -32,7 +32,7 @@ def _메타(*, row_count: int) -> TableMetadata:
 
 
 def test_증감률이_임계치_이내면_OK이다() -> None:
-    """|1000 → 1050| / 1000 = 5% < 25% → OK."""
+    """1000 → 1050 = +5% (|Δ|=5% < 25%) → OK (부호 유지)."""
     result = evaluate(
         _메타(row_count=1050),
         yesterday_row_count=1000,
@@ -46,8 +46,23 @@ def test_증감률이_임계치_이내면_OK이다() -> None:
     assert result.delta_percent_vs_yesterday == 5.0
 
 
+def test_증감이_급증_임계치_초과면_FAIL이다() -> None:
+    """1000 → 2000 = +100% (|Δ|=100% ≥ 25%) → FAIL (양수 부호 유지)."""
+    result = evaluate(
+        _메타(row_count=2000),
+        yesterday_row_count=1000,
+        delta_threshold_percent=25.0,
+        batch_time=BATCH_TIME,
+        buffer_minutes=BUFFER_MINUTES,
+        now=NOW,
+    )
+    assert result.status == CheckStatus.fail
+    assert any(r.startswith("증감률 임계치 초과") for r in result.failure_reasons)
+    assert result.delta_percent_vs_yesterday == 100.0
+
+
 def test_증감률이_임계치_이상이면_FAIL이다() -> None:
-    """|1000 → 400| / 1000 = 60% ≥ 25% → FAIL."""
+    """1000 → 400 = -60% (|Δ|=60% ≥ 25%) → FAIL (부호 유지)."""
     result = evaluate(
         _메타(row_count=400),
         yesterday_row_count=1000,
@@ -58,7 +73,7 @@ def test_증감률이_임계치_이상이면_FAIL이다() -> None:
     )
     assert result.status == CheckStatus.fail
     assert any(r.startswith("증감률 임계치 초과") for r in result.failure_reasons)
-    assert result.delta_percent_vs_yesterday == 60.0
+    assert result.delta_percent_vs_yesterday == -60.0
 
 
 def test_베이스라인이_없으면_증감률_비교를_생략한다() -> None:

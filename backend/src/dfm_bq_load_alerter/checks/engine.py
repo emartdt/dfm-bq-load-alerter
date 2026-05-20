@@ -146,12 +146,13 @@ def evaluate(
             if yesterday_row_count is None:
                 notes.append("이전 배치 기록 없음 - 증감률 비교 생략")
             elif yesterday_row_count > 0 and metadata.row_count is not None:
-                delta = abs(metadata.row_count - yesterday_row_count)
-                delta_percent = (delta / yesterday_row_count) * 100.0
-                if delta_percent >= delta_threshold_percent:
+                delta_percent = (
+                    (metadata.row_count - yesterday_row_count) / yesterday_row_count
+                ) * 100.0
+                if abs(delta_percent) >= delta_threshold_percent:
                     reasons.append(
-                        f"증감률 임계치 초과: {delta_percent:.2f}% >= "
-                        f"{delta_threshold_percent:.2f}%"
+                        f"증감률 임계치 초과: {delta_percent:+.2f}% (|Δ| >= "
+                        f"{delta_threshold_percent:.2f}%)"
                     )
             elif (
                 yesterday_row_count == 0
