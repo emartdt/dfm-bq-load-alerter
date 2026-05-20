@@ -53,16 +53,30 @@ DFM(datafabric-manager) 시스템에서 BigQuery 적재(load) 작업 상태를 �
 - **IngressClass**: `nginx`
 - **TLS**: 와일드카드 시크릿 `tls-wildcard-shinsegae-ai-2026` 재사용 (`datafabric-alert` 네임스페이스에 동일 시크릿이 존재해야 함)
 
-### 릴리스 플로우 (2단계)
+### 릴리스 플로우 (`scripts/release.sh`)
 
-GH-hosted runner 가 사내 Rancher API 에 도달할 수 없어 빌드와 배포를 분리.
+GH-hosted runner 가 사내 Rancher API 에 도달할 수 없어 이미지 빌드와 클러스터 배포가 분리되며, 그 외 단계는 `scripts/release.sh` 가 한 번에 자동화한다.
 
-1. **이미지 빌드·푸시 (자동)** — `main` 에 머지 후 GitHub UI 에서 `vX.Y.Z` 로 release publish 시 `.github/workflows/release.yml` 이 GCP Artifact Registry 로 이미지를 push.
-2. **클러스터 배포 (수동)** — 사내망 단말에서:
-   ```bash
-   ./scripts/deploy.sh 0.1.0
-   ```
-   상세는 [`docs/deployment.md`](docs/deployment.md) 참조.
+```bash
+./scripts/release.sh 0.9.0           # 정식 실행 (각 단계 confirm 프롬프트 포함)
+./scripts/release.sh 0.9.0 --yes     # 프롬프트 자동 yes
+./scripts/release.sh 0.9.0 --dry-run # 명령만 출력
+./scripts/release.sh 0.9.0 --start-from migrate  # 특정 단계부터 재개
+```
+
+스크립트는 **멱등** — 중도 실패 후 동일 명령으로 재실행하면 이미 끝난 단계는 자동 skip 한다.
+
+| 단계 | 동작 | 멱등 키 |
+|------|------|---------|
+| **1. bump** | `chore/release-vX.Y.Z` 브랜치에서 `backend/pyproject.toml`, `frontend/package.json` 버전을 X.Y.Z 로 올린 뒤 `dev` 로 머지(merge commit) | dev 의 두 버전 파일이 이미 X.Y.Z 면 skip |
+| **2. pr1** | `dev → main` 릴리스 PR 생성·CI 대기·merge commit 머지 | dev 가 main 의 ancestor 이고 main 도 X.Y.Z 면 skip |
+| **3. migrate** | 운영 DB(Cloud SQL `dfm_bq_load_alerter`) 에 `alembic upgrade head` 적용 | alembic 자체가 멱등 |
+| **4. release** | `vX.Y.Z` 태그 + GitHub Release 생성 → `release.yml` 이 GCP Artifact Registry 로 이미지 push | 태그가 이미 존재하면 skip |
+| **5. deploy** | (수동) 사내망 단말에서 `./scripts/deploy.sh X.Y.Z` 로 클러스터 적용 | — |
+
+> ⚠️ **버전 bump 는 반드시 dev 에서 먼저** 한다. 과거에는 dev→main 머지 후 main 에 직접 bump PR 을 올렸지만, 그 커밋이 dev 로 역방향 머지되지 않아 다음 릴리스 PR 의 버전 파일이 매번 충돌했다. dev-first bump 와 함께 GitHub 리포지토리 설정에서 **squash merge 를 비활성화** 하여(merge commit 전용) dev↔main 사이 history 도 일치하도록 운영한다.
+
+상세 — [`docs/deployment.md`](docs/deployment.md), 사후 작업 — [`scripts/deploy.sh`](scripts/deploy.sh).
 
 ### 필요한 GitHub Secrets / Variables (이미지 푸시용)
 
@@ -104,18 +118,6 @@ docker build -t dfm-bq-load-alerter:dev .
 docker run --rm -p 8000:8000 dfm-bq-load-alerter:dev
 # http://localhost:8000
 ```
-
-## TODO (MVP 이후)
-
-- [ ] 실제 BigQuery load job 모니터링 로직 (`google-cloud-bigquery` SDK)
-- [ ] 알림 채널 연동 (Slack / 사내 알림 시스템)
-- [ ] 알림 임계치·정책 설정 UI
-- [ ] 인증 (FreeIPA/OIDC SSO) — 현재 무인증
-- [ ] Helm chart 를 `datafabric-appcatalog-charts` 로 이전
-- [ ] 와일드카드 TLS 시크릿 자동 복제 메커니즘 (reflector 등)
-- [ ] DFM 문서 작성 (`architecture/dfm-bq-load-alerter.md`, `runbook/`)
-- [ ] 관측성: Prometheus `/metrics`, 구조화 로그
-- [ ] e2e 테스트
 
 ## 위치
 

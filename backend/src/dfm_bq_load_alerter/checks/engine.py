@@ -72,15 +72,15 @@ def evaluate(
 ) -> CheckResult:
     """단일 (테이블, 메타데이터, 베이스라인) 조합에 대한 상태 판정.
 
-    판정 로직 (rev 3 — 단순화된 "오늘 적재 여부" 기준):
+    판정 로직 (rev 4 — SKIP 도입):
 
     [A] ``cond_buffer_load`` 활성: 적재 여부 / row_count==0 검사
         - 오늘(KST) 일자로 적재 완료 (``last_modified.date() == today``)
             - ``row_count == 0`` → FAIL ("row count 0")
             - 그 외 → 본 분기에서는 FAIL 추가하지 않음 (증감률은 [B] 에서 평가)
         - 오늘 일자로 미적재
-            - 현재시각 < ``batch_time + buffer_minutes`` → 아직 대기 중,
-              FAIL 단정 불가
+            - 현재시각 < ``batch_time + buffer_minutes`` → 마감 이전, 판정 보류
+              (SKIP). FAIL 도 OK 도 아님.
             - 현재시각 ≥ ``batch_time + buffer_minutes`` → FAIL
               ("오늘 미적재" 또는 ``last_modified is None`` 일 때
               "최종 업데이트 시각 없음")
@@ -97,11 +97,17 @@ def evaluate(
           생략하고 정보성 노트만 남긴다(FAIL 아님).
         - ``baseline == 0`` 이고 ``today > 0`` 이면 0→증가 케이스로
           FAIL 처리.
+
+    상태 우선순위는 FAIL > SKIP > OK 다. cond_buffer_load 가 마감 이전 미적재로
+    SKIP 후보를 만들었더라도 [B] 의 증감률 검사가 FAIL 사유를 추가했다면 FAIL 이
+    우선한다(현 구현에선 [B] 가 동일 미적재 케이스에서 건너뛰므로 이 충돌은
+    실질적으로 발생하지 않지만, 우선순위만 명시한다).
     """
     reasons: list[str] = []
     notes: list[str] = []
     actual = now if now is not None else datetime.now(tz=KST)
     today = today_kst(actual)
+    pending_load = False  # 마감 이전 미적재로 SKIP 판정될 수 있는 후보 표식
 
     loaded_today = (
         metadata.last_modified is not None
@@ -125,6 +131,8 @@ def evaluate(
                     reasons.append("최종 업데이트 시각 없음")
                 else:
                     reasons.append("오늘 미적재")
+            else:
+                pending_load = True
 
     # [B] cond_delta_rowcount: 증감률
     delta_percent: float | None = None
@@ -156,7 +164,12 @@ def evaluate(
                     f"(임계치 {delta_threshold_percent:.2f}%)"
                 )
 
-    status = CheckStatus.fail if reasons else CheckStatus.ok
+    if reasons:
+        status = CheckStatus.fail
+    elif pending_load:
+        status = CheckStatus.skip
+    else:
+        status = CheckStatus.ok
     return CheckResult(
         status=status,
         failure_reasons=reasons,

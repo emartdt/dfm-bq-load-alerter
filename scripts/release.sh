@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 # 운영 릴리스 자동화 스크립트.
 #
-# v0.8.0 릴리스(PR #33 + PR #34) 패턴을 그대로 자동화한다.
-#   1) dev → main PR 생성 + CI 통과 대기 + 머지
-#   2) chore/release-vX.Y.Z 브랜치에서 버전 bump 후 PR + 머지
+# 순서 (dev-first bump — 릴리스 PR 충돌 누적 방지):
+#   1) chore/release-vX.Y.Z 브랜치에서 버전 bump → dev 로 머지
+#   2) dev → main 릴리스 PR 생성 + CI 통과 대기 + 머지(merge commit)
 #   3) 운영 DB(`dfm_bq_load_alerter` on Cloud SQL) alembic upgrade head
 #   4) GitHub Release vX.Y.Z 생성 → release.yml 이 이미지 빌드/푸시
 #   5) 사내망 단말에서 ./scripts/deploy.sh X.Y.Z 수동 실행 안내
+#
+# 왜 bump 가 먼저인가:
+#   과거에는 dev→main 머지 후 main 에 직접 version bump PR 을 올렸지만, 그
+#   bump 가 dev 로 역방향 머지되지 않아 다음 릴리스 PR 의 버전 파일이 매번
+#   충돌했다. dev 에서 bump 하면 같은 커밋이 dev→main 릴리스 PR 에 자연
+#   포함되어 양쪽이 늘 일치한다. (allow_squash_merge=false 와 함께 사용)
 #
 # 사용법:
 #   ./scripts/release.sh 0.9.0                    # 정식 실행
 #   ./scripts/release.sh 0.9.0 --dry-run          # 명령만 출력, 변경 없음
 #   ./scripts/release.sh 0.9.0 --yes              # 모든 확인 프롬프트 자동 yes
 #   ./scripts/release.sh 0.9.0 --skip-migration   # 마이그레이션 건너뜀
-#   ./scripts/release.sh 0.9.0 --start-from bump  # 특정 단계부터 재개
-#                                                 # 단계: pr1 | bump | migrate | release
+#   ./scripts/release.sh 0.9.0 --start-from pr1   # 특정 단계부터 재개
+#                                                 # 단계: bump | pr1 | migrate | release
 #
 # 전제 조건 (사내망 단말):
 #   - git, gh CLI (인증 완료, repo write 권한)
@@ -45,7 +51,7 @@ SKIP_CI_WAIT="${SKIP_CI_WAIT:-0}"
 DRY_RUN=0
 ASSUME_YES=0
 SKIP_MIGRATION=0
-START_FROM="pr1"
+START_FROM="bump"
 VERSION=""
 
 # 색상 (TTY 일 때만)
@@ -120,8 +126,8 @@ done
   || die "버전 형식이 SemVer(X.Y.Z) 가 아님: ${VERSION}"
 
 case "${START_FROM}" in
-  pr1|bump|migrate|release) ;;
-  *) die "--start-from 은 pr1|bump|migrate|release 중 하나" ;;
+  bump|pr1|migrate|release) ;;
+  *) die "--start-from 은 bump|pr1|migrate|release 중 하나" ;;
 esac
 
 TAG="v${VERSION}"
@@ -168,16 +174,19 @@ check_prereqs() {
   [[ "${local_dev}" == "${remote_dev}" ]] \
     || die "로컬 dev 가 ${REMOTE}/dev 와 다름. git pull 후 재실행"
 
-  # 태그 중복
+  # 태그 중복 — 멱등 실행을 위해 정보성으로 변경 (step_release 가 자체 skip 처리)
   if git rev-parse "${TAG}" >/dev/null 2>&1; then
-    die "태그 ${TAG} 이미 존재"
+    warn "태그 ${TAG} 이미 존재 — Release 단계는 skip 됩니다"
   fi
 
-  # 변경 사항 존재
+  # 변경 사항 존재 — ahead 0 은 pr1 단계 skip 신호로만 사용 (멱등)
   local ahead
   ahead="$(git rev-list --count "${REMOTE}/main..${REMOTE}/dev")"
-  [[ "${ahead}" -gt 0 ]] || die "${REMOTE}/dev 가 ${REMOTE}/main 대비 ahead 0 — 릴리스 대상 없음"
-  ok "dev 가 main 대비 ${ahead} 커밋 ahead"
+  if [[ "${ahead}" -eq 0 ]]; then
+    warn "${REMOTE}/dev 가 ${REMOTE}/main 대비 ahead 0 — pr1 단계 skip 예정"
+  else
+    ok "dev 가 main 대비 ${ahead} 커밋 ahead"
+  fi
 
   ok "사전 검증 통과"
 }
@@ -263,11 +272,23 @@ generate_release_notes() {
 }
 
 # ============================================================================
-# 단계 1: dev → main PR 생성 + 머지
+# 단계 2: dev → main 릴리스 PR 생성 + 머지
 # ============================================================================
 
 step_pr1() {
-  step "단계 1/4: PR (dev → main) 생성 및 머지"
+  step "단계 2/4: 릴리스 PR (dev → main) 생성 및 머지"
+
+  # 멱등성: dev 가 이미 main 의 ancestor 이고 main 도 ${TAG} 면 skip
+  run "git fetch ${REMOTE} --prune"
+  if git merge-base --is-ancestor "${REMOTE}/dev" "${REMOTE}/main" 2>/dev/null; then
+    local main_py_ver
+    main_py_ver="$(git show ${REMOTE}/main:backend/pyproject.toml \
+      | sed -nE 's|^version = "(.*)"|\1|p' | head -1)"
+    if [[ "${main_py_ver}" == "${VERSION}" ]]; then
+      ok "dev 가 이미 ${REMOTE}/main 에 반영, main 버전 ${TAG} — PR 단계 skip (멱등)"
+      return 0
+    fi
+  fi
 
   local prev_tag
   prev_tag="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
@@ -308,15 +329,33 @@ step_pr1() {
 }
 
 # ============================================================================
-# 단계 2: 버전 bump PR (chore/release-vX.Y.Z)
+# 단계 1: dev 에 버전 bump PR (chore/release-vX.Y.Z → dev)
 # ============================================================================
+#
+# dev 에서 먼저 bump 하는 이유는 파일 상단 주석 참조. 같은 bump 커밋이 그대로
+# 단계 2 의 dev → main 릴리스 PR 에 포함되어, main 과 dev 의 버전 파일이 늘
+# 동일하게 유지된다.
+
+_versions_match_tag() {
+  # dev 의 버전 파일 두 개가 모두 ${VERSION} 인지
+  local py_ver pkg_ver
+  py_ver="$(sed -nE 's|^version = "(.*)"|\1|p' backend/pyproject.toml | head -1)"
+  pkg_ver="$(sed -nE 's|.*"version": "([^"]+)".*|\1|p' frontend/package.json | head -1)"
+  [[ "${py_ver}" == "${VERSION}" && "${pkg_ver}" == "${VERSION}" ]]
+}
 
 step_bump() {
-  step "단계 2/4: 버전 bump PR (${BUMP_BRANCH})"
+  step "단계 1/4: 버전 bump PR (${BUMP_BRANCH} → dev)"
 
   run "git fetch ${REMOTE}"
-  run "git checkout main"
-  run "git pull ${REMOTE} main"
+  run "git checkout dev"
+  run "git pull ${REMOTE} dev"
+
+  # 멱등성: dev 가 이미 ${TAG} 면 단계 자체 skip
+  if _versions_match_tag; then
+    ok "dev 가 이미 ${TAG} — bump 단계 skip (멱등)"
+    return 0
+  fi
 
   if git show-ref --verify --quiet "refs/heads/${BUMP_BRANCH}"; then
     warn "로컬 브랜치 ${BUMP_BRANCH} 이미 존재 — 강제 재생성"
@@ -328,7 +367,7 @@ step_bump() {
   bump_file backend/pyproject.toml      '^version = ".*"$'        "version = \"${VERSION}\""
   bump_file frontend/package.json       '"version": ".*"'         "\"version\": \"${VERSION}\""
 
-  # Chart.yaml 은 별도 lifecycle. 일치시키지 않는다 (PR #34 패턴 그대로).
+  # Chart.yaml 은 별도 lifecycle. 일치시키지 않는다.
   # 필요 시 BUMP_CHART=1 환경변수로 활성화.
   if [[ "${BUMP_CHART:-0}" == "1" ]]; then
     bump_file charts/dfm-bq-load-alerter/Chart.yaml '^version: .*$'    "version: ${VERSION}"
@@ -353,18 +392,19 @@ step_bump() {
   run "git commit -m 'chore(release): bump version to ${TAG}'"
   run "git push -u ${REMOTE} '${BUMP_BRANCH}'"
 
-  local title="release: ${TAG}"
+  local title="chore(release): bump version to ${TAG}"
   local body
   body="$(cat <<EOF
 ## Summary
 
-PR #1 (dev → main · ${TAG}) 머지로 들어간 신규 기능에 대한 버전 bump.
+${TAG} 릴리스 직전 dev 브랜치에 버전 bump.
 
 - \`backend/pyproject.toml\`: → ${VERSION}
 - \`frontend/package.json\`: → ${VERSION}
 $( [[ "${BUMP_CHART:-0}" == "1" ]] && echo "- \`charts/dfm-bq-load-alerter/Chart.yaml\`: → ${VERSION}" )
 
-머지 후 GitHub Release \`${TAG}\` 가 생성되며, release.yml 이 이미지를 Artifact Registry 로 푸시.
+이 PR 머지 후 dev → main 릴리스 PR 이 생성되며, bump 커밋도 같이 main 으로 들어가
+양 브랜치의 버전 파일이 일치한다.
 
 🤖 Generated by scripts/release.sh
 EOF
@@ -373,14 +413,14 @@ EOF
   printf '%s\n' "${body}" > "${body_file}"
 
   local pr_number=""
-  pr_number="$(gh pr list --base main --head "${BUMP_BRANCH}" --state open --json number --jq '.[0].number // ""')"
+  pr_number="$(gh pr list --base dev --head "${BUMP_BRANCH}" --state open --json number --jq '.[0].number // ""')"
   if [[ -n "${pr_number}" ]]; then
     warn "이미 열린 bump PR #${pr_number} — 본문 갱신"
     run "gh pr edit '${pr_number}' --title '${title}' --body-file '${body_file}'"
   else
-    run "gh pr create --base main --head '${BUMP_BRANCH}' \
+    run "gh pr create --base dev --head '${BUMP_BRANCH}' \
       --title '${title}' --body-file '${body_file}'"
-    pr_number="$(gh pr list --base main --head "${BUMP_BRANCH}" --state open --json number --jq '.[0].number // ""')"
+    pr_number="$(gh pr list --base dev --head "${BUMP_BRANCH}" --state open --json number --jq '.[0].number // ""')"
     [[ -n "${pr_number}" || "${DRY_RUN}" != "1" ]] || pr_number="DRY"
   fi
   [[ -n "${pr_number}" ]] || die "bump PR 번호 조회 실패"
@@ -388,13 +428,13 @@ EOF
 
   wait_for_ci "${pr_number}"
 
-  confirm "bump PR #${pr_number} 머지(--admin --squash) 진행?" || die "취소됨"
-  run "gh pr merge '${pr_number}' --admin --squash --delete-branch"
+  confirm "bump PR #${pr_number} 머지(--admin --merge) 진행?" || die "취소됨"
+  run "gh pr merge '${pr_number}' --admin --merge --delete-branch"
   ok "bump PR #${pr_number} 머지 완료"
 
-  # main 동기화
-  run "git checkout main"
-  run "git pull ${REMOTE} main"
+  # dev 동기화
+  run "git checkout dev"
+  run "git pull ${REMOTE} dev"
   run "rm -f '${body_file}'"
 }
 
@@ -405,13 +445,19 @@ bump_file() {
   if [[ "${DRY_RUN}" == "1" ]]; then
     return 0
   fi
+  # 패턴이 한 번도 매치되지 않으면 파일 구조가 변한 신호 → die
+  if ! grep -E -q "${pattern}" "${path}"; then
+    die "패턴 매치 실패 (파일 구조 변경?): ${path} / ${pattern}"
+  fi
   # 플랫폼 무관 inplace edit
   local tmp; tmp="$(mktemp -t bump.XXXXXX)"
   if ! sed -E "s|${pattern}|${replacement}|" "${path}" > "${tmp}"; then
     rm -f "${tmp}"; die "sed 치환 실패: ${path}"
   fi
+  # 멱등성: 이미 target 값이면 그대로 통과 (재실행 안전)
   if cmp -s "${path}" "${tmp}"; then
-    rm -f "${tmp}"; die "치환된 내용이 없음 (패턴 매치 실패): ${path} / ${pattern}"
+    rm -f "${tmp}"; info "    (이미 ${replacement} — 변경 없음)"
+    return 0
   fi
   mv "${tmp}" "${path}"
 }
@@ -468,6 +514,13 @@ step_migrate() {
 
 step_release() {
   step "단계 4/4: GitHub Release ${TAG} 생성"
+
+  # 멱등성: 태그가 이미 원격에 있으면 skip (Release 도 함께 만들어졌다고 가정)
+  run "git fetch ${REMOTE} --tags"
+  if git rev-parse "${TAG}" >/dev/null 2>&1; then
+    ok "태그 ${TAG} 이미 존재 — Release 단계 skip (멱등). 필요 시 'gh release view ${TAG}' 로 확인"
+    return 0
+  fi
 
   # 태그 대상은 머지된 main HEAD
   local main_sha; main_sha="$(git rev-parse "${REMOTE}/main")"
@@ -576,14 +629,14 @@ main() {
   check_prereqs
 
   case "${START_FROM}" in
-    pr1)
-      step_pr1
+    bump)
       step_bump
+      step_pr1
       step_migrate
       step_release
       ;;
-    bump)
-      step_bump
+    pr1)
+      step_pr1
       step_migrate
       step_release
       ;;

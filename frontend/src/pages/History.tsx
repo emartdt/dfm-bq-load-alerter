@@ -35,7 +35,7 @@ type EventSortKey =
 const SNAPSHOT_STATUS_LABEL: Record<string, string> = {
   ok: '정상',
   fail: '실패',
-  insufficient_history: '이력 부족',
+  skip: '판정 보류',
 }
 
 const EVENT_STATUS_LABEL: Record<string, string> = {

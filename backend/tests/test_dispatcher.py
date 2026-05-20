@@ -166,6 +166,140 @@ async def test_report_trigger_sends_even_when_all_ok(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_check_trigger_excludes_skip_rows(monkeypatch) -> None:
+    """점검(check) 알림: SKIP 스냅샷은 본문에서 제외되어야 하고,
+    FAIL 0건이면 발송 자체를 건너뛴다."""
+    session = _build_session(recipients=["a@example.com"])
+    sent_email = AsyncMock()
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", sent_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[_snap(CheckStatus.skip)],
+        trigger_kind="check",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 0
+    sent_email.assert_not_awaited()
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_trigger_skip_does_not_leak_into_fail_email(monkeypatch) -> None:
+    """점검 알림: FAIL 1건 + SKIP 1건 → 이메일은 발송되지만 본문 HTML 에는
+    SKIP 카드가 포함되지 않아야 한다."""
+    session = _build_session(recipients=["a@example.com"])
+    captured: dict[str, str] = {}
+
+    async def fake_send_email(*, to, subject, html):
+        captured["html"] = html
+
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", fake_send_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[
+            _snap(CheckStatus.fail, table="FAIL_T"),
+            _snap(CheckStatus.skip, table="SKIP_T"),
+        ],
+        trigger_kind="check",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 1
+    assert "FAIL_T" in captured["html"]
+    assert "SKIP_T" not in captured["html"]
+    assert "SKIP" not in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_report_trigger_excludes_skip_cards_but_shows_pill(monkeypatch) -> None:
+    """일일 리포트(report): SKIP 스냅샷은 본문 카드로 렌더되지 않지만,
+    상단 헤더 pill 에 'SKIP N' 으로 개수만 노출된다."""
+    session = _build_session(recipients=["a@example.com"])
+    captured: dict[str, str] = {}
+
+    async def fake_send_email(*, to, subject, html):
+        captured["html"] = html
+
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", fake_send_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[
+            _snap(CheckStatus.ok, table="OK_T"),
+            _snap(CheckStatus.skip, table="SKIP_T"),
+            _snap(CheckStatus.skip, table="SKIP_T2"),
+        ],
+        trigger_kind="report",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 1
+    assert "OK_T" in captured["html"]
+    # SKIP 본문 카드는 없다 — 식별자가 본문에 나타나지 않아야 한다.
+    assert "SKIP_T" not in captured["html"]
+    # 상단 pill 에는 'SKIP 2' 가 노출된다.
+    assert "SKIP 2" in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_check_trigger_does_not_show_skip_pill(monkeypatch) -> None:
+    """점검(check) 알림: FAIL 1건 + SKIP 1건 → SKIP 카운트 pill 도 노출하지 않는다."""
+    session = _build_session(recipients=["a@example.com"])
+    captured: dict[str, str] = {}
+
+    async def fake_send_email(*, to, subject, html):
+        captured["html"] = html
+
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", fake_send_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[
+            _snap(CheckStatus.fail, table="FAIL_T"),
+            _snap(CheckStatus.skip, table="SKIP_T"),
+        ],
+        trigger_kind="check",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 1
+    assert "FAIL_T" in captured["html"]
+    assert "SKIP" not in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_report_trigger_skipped_when_all_skip(monkeypatch) -> None:
+    """일일 리포트(report): 모든 스냅샷이 SKIP 이면 발송 자체를 건너뛴다."""
+    session = _build_session(recipients=["a@example.com"])
+    sent_email = AsyncMock()
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", sent_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[_snap(CheckStatus.skip, table="SKIP_T")],
+        trigger_kind="report",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 0
+    sent_email.assert_not_awaited()
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_does_not_send_when_no_recipients(monkeypatch) -> None:
     """Empty recipient list → no email send and no AlertEvent row."""
     session = _build_session(recipients=[])

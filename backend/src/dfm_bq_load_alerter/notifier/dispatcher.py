@@ -19,10 +19,15 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, time
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dfm_bq_load_alerter.bq.templating import (
+    ConditionQueryTemplateError,
+    render_condition_query,
+)
 from dfm_bq_load_alerter.db.models import (
     AlertEvent,
     AlertRecipient,
@@ -48,6 +53,24 @@ from dfm_bq_load_alerter.notifier.template import (
 from dfm_bq_load_alerter.settings import settings
 
 log = logging.getLogger(__name__)
+_KST = ZoneInfo("Asia/Seoul")
+
+
+def _render_condition_query_for_alert(
+    template: str | None, when: datetime | None
+) -> str | None:
+    """알람 본문에 노출할 condition_query 를 KST 기준 시각으로 렌더한다.
+
+    렌더 실패 시 raw 템플릿을 그대로 반환해, 알람 자체는 누락되지 않도록 한다.
+    """
+    if not template:
+        return None
+    now_kst = when.astimezone(_KST) if when is not None else None
+    try:
+        return render_condition_query(template, now_kst=now_kst)
+    except ConditionQueryTemplateError as exc:
+        log.warning("condition_query 렌더 실패 — raw 표시로 폴백: %s", exc)
+        return template
 
 
 @dataclass(slots=True)
@@ -156,7 +179,13 @@ async def dispatch(
     """Send one bundled message to the global recipient/webhook pool.
 
     Returns the total number of `alert_events` rows added (sent + failed + skipped).
+
+    SKIP 스냅샷(마감 이전 미적재로 판정 보류)은 본문 카드로 렌더하지 않는다.
+    리포트(report)는 헤더 pill 에 SKIP 개수만 노출해 운영자가 보류 상태 규모를
+    인지할 수 있도록 하고, 점검 알림(check)에서는 SKIP 자체를 표기하지 않는다.
     """
+    skip_count = sum(1 for s in snapshots if s.status == CheckStatus.skip)
+    snapshots = [s for s in snapshots if s.status != CheckStatus.skip]
     if not snapshots and trigger_kind == "report":
         log.info("dispatch skipped: empty snapshot list for trigger=report")
         return 0
@@ -165,13 +194,22 @@ async def dispatch(
         log.info("dispatch skipped: no FAIL rows for trigger=check")
         return 0
 
+    skip_count_for_header = skip_count if trigger_kind == "report" else 0
     rows = [_to_template_row(s) for s in snapshots]
     subject, html = build_email_html(
-        trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
+        trigger_kind=trigger_kind,
+        expected=expected,
+        actual=actual,
+        rows=rows,
+        skip_count=skip_count_for_header,
     )
     # Teams Webhook 페이로드 한계 회피를 위해 카드 N 분할 가능.
     teams_cards = build_teams_cards(
-        trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
+        trigger_kind=trigger_kind,
+        expected=expected,
+        actual=actual,
+        rows=rows,
+        skip_count=skip_count_for_header,
     )
 
     summary = f"{trigger_kind} · fail={fail_count}/{len(snapshots)}"
@@ -305,7 +343,7 @@ async def _lookup_baseline_snapshot(
         .where(CheckSnapshot.table_id == table_id)
         .where(CheckSnapshot.checked_at >= start)
         .where(CheckSnapshot.checked_at < end)
-        .where(CheckSnapshot.status != CheckStatus.insufficient_history)
+        .where(CheckSnapshot.status != CheckStatus.skip)
         .order_by(CheckSnapshot.checked_at.desc())
         .limit(1)
     )
@@ -371,7 +409,9 @@ async def build_dispatch_snapshots(
                     if table.buffer_minutes is not None
                     else fallback_buffer
                 ),
-                condition_query=table.condition_query,
+                condition_query=_render_condition_query_for_alert(
+                    table.condition_query, s.checked_at
+                ),
             )
         )
     return result

@@ -316,8 +316,34 @@ p { margin: 0 0 var(--sp-sm); }
 .field input::placeholder { color: var(--color-ink-muted-48); }
 .field .sql-textarea {
   font-family: var(--font-mono);
-  min-height: 110px;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 132px;
   white-space: pre;
+}
+.template-vars {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-ink-muted-48);
+}
+.template-vars-label {
+  font-weight: 500;
+  margin-right: 2px;
+}
+.template-vars code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--color-canvas-parchment);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  color: var(--color-ink);
+  white-space: nowrap;
 }
 
 /* Buttons */
@@ -413,7 +439,7 @@ p { margin: 0 0 var(--sp-sm); }
 }
 .status-ok { background: rgba(36, 138, 61, 0.12); color: var(--status-ok); }
 .status-fail { background: rgba(201, 32, 22, 0.12); color: var(--status-fail); }
-.status-insufficient_history { background: rgba(178, 80, 0, 0.12); color: var(--status-warn); }
+.status-skip { background: rgba(178, 80, 0, 0.12); color: var(--status-warn); }
 .status-sent { background: rgba(36, 138, 61, 0.12); color: var(--status-ok); }
 .status-failed { background: rgba(201, 32, 22, 0.12); color: var(--status-fail); }
 .status-skipped { background: rgba(122, 122, 122, 0.12); color: var(--color-ink-muted-48); }

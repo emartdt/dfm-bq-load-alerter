@@ -35,7 +35,7 @@ const EMPTY_FORM: TableCreate = {
 const STATUS_LABEL: Record<string, string> = {
   ok: '정상',
   fail: '실패',
-  insufficient_history: '이력 부족',
+  skip: '판정 보류',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
@@ -550,17 +550,12 @@ export function Tables() {
             <span>
               커스텀 row_count SQL{' '}
               <span className="field-hint">
-                비우면 __TABLES__ 사용 · SELECT/WITH 로 시작, 단일 행·단일 정수 컬럼 ·
-                템플릿 변수 (KST): <code>{'{{ today }}'}</code>{' '}
-                <code>{'{{ yesterday }}'}</code>{' '}
-                <code>{'{{ days_ago(n) }}'}</code>{' '}
-                <code>{'{{ months_ago(n) }}'}</code>{' '}
-                <code>{'{{ now }}'}</code>
+                비우면 __TABLES__.row_count 사용 · SELECT/WITH 로 시작, 단일 행·단일 정수 컬럼
               </span>
             </span>
             <textarea
               className="sql-textarea"
-              rows={5}
+              rows={6}
               value={form.condition_query ?? ''}
               onChange={(e) => {
                 setForm({ ...form, condition_query: e.target.value })
@@ -573,6 +568,14 @@ export function Tables() {
               }
               spellCheck={false}
             />
+            <div className="template-vars">
+              <span className="template-vars-label">템플릿 변수 (KST)</span>
+              <code>{'{{ today }}'}</code>
+              <code>{'{{ yesterday }}'}</code>
+              <code>{'{{ now }}'}</code>
+              <code>{'{{ days_ago(n) }}'}</code>
+              <code>{'{{ months_ago(n) }}'}</code>
+            </div>
             <div className="btn-row" style={{ marginTop: 'var(--sp-xs, 4px)' }}>
               <button
                 type="button"
