@@ -202,7 +202,7 @@ _HTML_TEMPLATE = _env.from_string(
     </div>
     <div style="margin-top:12px;">
       {% if fail_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fdecea;color:#c62828;margin-right:6px;">FAIL {{ fail_rows|length }}</span>{% endif %}
-      {% if skip_rows %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fff4e5;color:#b26a00;margin-right:6px;">SKIP {{ skip_rows|length }}</span>{% endif %}
+      {% if skip_count %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fff4e5;color:#b26a00;margin-right:6px;">SKIP {{ skip_count }}</span>{% endif %}
       {% if ok_rows and trigger_kind == "report" %}<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#e8f5e9;color:#2e7d32;">OK {{ ok_rows|length }}</span>{% endif %}
     </div>
   </div>
@@ -210,11 +210,6 @@ _HTML_TEMPLATE = _env.from_string(
   {% if fail_rows %}
   <h3 style="margin:24px 4px 12px;color:#c62828;font-size:15px;letter-spacing:0.02em;">FAIL ({{ fail_rows|length }})</h3>
   {% for r in fail_rows %}{{ render_card(r, "fail") }}{% endfor %}
-  {% endif %}
-
-  {% if skip_rows %}
-  <h3 style="margin:24px 4px 12px;color:#b26a00;font-size:15px;letter-spacing:0.02em;">SKIP ({{ skip_rows|length }})</h3>
-  {% for r in skip_rows %}{{ render_card(r, "skip") }}{% endfor %}
   {% endif %}
 
   {% if ok_rows and trigger_kind == "report" %}
@@ -230,11 +225,10 @@ _HTML_TEMPLATE = _env.from_string(
 
 def _bucket_rows(
     rows: list[TemplateRow],
-) -> tuple[list[TemplateRow], list[TemplateRow], list[TemplateRow]]:
+) -> tuple[list[TemplateRow], list[TemplateRow]]:
     fail = [r for r in rows if r.status == "fail"]
-    skip = [r for r in rows if r.status == "skip"]
     ok = [r for r in rows if r.status == "ok"]
-    return fail, skip, ok
+    return fail, ok
 
 
 def build_email_subject(*, trigger_kind: str, fail_count: int, expected: datetime) -> str:
@@ -244,15 +238,21 @@ def build_email_subject(*, trigger_kind: str, fail_count: int, expected: datetim
 
 
 def build_email_html(
-    *, trigger_kind: str, expected: datetime, actual: datetime, rows: list[TemplateRow]
+    *,
+    trigger_kind: str,
+    expected: datetime,
+    actual: datetime,
+    rows: list[TemplateRow],
+    skip_count: int = 0,
 ) -> tuple[str, str]:
-    fail, skip, ok = _bucket_rows(rows)
+    """`skip_count` 는 헤더 pill 에만 사용되며 본문 카드로는 렌더되지 않는다."""
+    fail, ok = _bucket_rows(rows)
     subject = build_email_subject(
         trigger_kind=trigger_kind, fail_count=len(fail), expected=expected
     )
     if fail:
         banner_accent = "#c62828"
-    elif skip:
+    elif skip_count:
         banner_accent = "#f57c00"
     else:
         banner_accent = "#2e7d32"
@@ -265,7 +265,7 @@ def build_email_html(
         expected_kst=_to_kst(expected),
         actual_kst=_to_kst(actual),
         fail_rows=fail,
-        skip_rows=skip,
+        skip_count=skip_count,
         ok_rows=ok,
     )
     return subject, html
@@ -525,7 +525,12 @@ def _wrap_adaptive_card(body: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def build_teams_cards(
-    *, trigger_kind: str, expected: datetime, actual: datetime, rows: list[TemplateRow]
+    *,
+    trigger_kind: str,
+    expected: datetime,
+    actual: datetime,
+    rows: list[TemplateRow],
+    skip_count: int = 0,
 ) -> list[dict[str, Any]]:
     """Build one-or-more Adaptive Card payloads, splitting to keep each ≤ ~22KB.
 
@@ -533,9 +538,15 @@ def build_teams_cards(
     많아질수록 카드가 커지므로, body 의 트레일링 요소(테이블별 Container)
     들을 적당히 나눠 여러 카드로 발송한다. 헤더(트리거 라벨/제목/예정·실측
     시각/상태 pill) 는 첫 카드에만 포함하고, 후속 카드에는 "(2/N)" 표시.
+
+    `skip_count` 는 헤더 pill 에만 사용되며 본문 카드로는 렌더되지 않는다.
     """
     base = build_teams_card(
-        trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
+        trigger_kind=trigger_kind,
+        expected=expected,
+        actual=actual,
+        rows=rows,
+        skip_count=skip_count,
     )
     if _payload_size(base) <= _TEAMS_PAYLOAD_BUDGET_BYTES:
         return [base]
@@ -588,14 +599,20 @@ def build_teams_cards(
 
 
 def build_teams_card(
-    *, trigger_kind: str, expected: datetime, actual: datetime, rows: list[TemplateRow]
+    *,
+    trigger_kind: str,
+    expected: datetime,
+    actual: datetime,
+    rows: list[TemplateRow],
+    skip_count: int = 0,
 ) -> dict[str, Any]:
     """Build an Adaptive Card v1.5 payload suitable for an Incoming Webhook.
 
     레이아웃은 이메일 HTML 과 동치 — 헤더(트리거 라벨 + 제목 + 예정/실측 KST + 상태 pill)
-    이후 카드별 (제목 + 상태 + 배치 메타 라인 + 2단 비교 + 단일 증감 라인 + 사유/노트).
+    이후 카드별 (제목 + 상태 + 배치 메타 라인 + 2단 비교 + 단일 증감 라인 + 사유).
+    `skip_count` 는 헤더 pill 에만 사용되며 본문 카드로는 렌더되지 않는다.
     """
-    fail, skip, ok = _bucket_rows(rows)
+    fail, ok = _bucket_rows(rows)
     summary = build_email_subject(
         trigger_kind=trigger_kind, fail_count=len(fail), expected=expected
     )
@@ -627,7 +644,7 @@ def build_teams_card(
             "wrap": True,
         },
     ]
-    pill_row = _pill_columns(len(fail), len(skip), len(ok), trigger_kind)
+    pill_row = _pill_columns(len(fail), skip_count, len(ok), trigger_kind)
     if pill_row is not None:
         body.append(pill_row)
 
@@ -643,19 +660,6 @@ def build_teams_card(
         )
         for r in fail:
             body.append(_build_card_container(r, "fail"))
-
-    if skip:
-        body.append(
-            {
-                "type": "TextBlock",
-                "weight": "Bolder",
-                "color": "Warning",
-                "text": f"SKIP ({len(skip)})",
-                "separator": True,
-            }
-        )
-        for r in skip:
-            body.append(_build_card_container(r, "skip"))
 
     if ok and trigger_kind == "report":
         body.append(

@@ -1,8 +1,8 @@
 """SKIP 상태의 점검/리포트 알림 본문을 파일로 렌더해 눈으로 확인한다.
 
-DB·SMTP·Teams Webhook 없이 동작한다. dispatcher 의 필터링
-(check·report 모두 SKIP 제외) 효과를 실제 HTML/Teams 카드 페이로드로
-시각화한다.
+DB·SMTP·Teams Webhook 없이 동작한다. dispatcher 의 동작을 그대로 재현 —
+SKIP 스냅샷은 본문 카드에서 제외되며, 리포트(report) 모드는 헤더 pill 에
+`SKIP N` 으로 개수만 노출한다. 점검(check) 모드는 SKIP 자체를 표기하지 않는다.
 
 사용법:
     uv run python scripts/preview_skip_alert.py
@@ -94,19 +94,29 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for trigger in ("check", "report"):
-        # dispatcher.dispatch() 의 필터링 규칙을 그대로 재현 — check·report
-        # 모두 SKIP 은 본문에서 제외한다.
+        # dispatcher.dispatch() 의 동작을 그대로 재현 — SKIP 스냅샷은 본문에서
+        # 항상 제외하고, report 모드에서만 헤더 pill 용 skip_count 를 전달한다.
+        skip_count = sum(1 for s in SNAPSHOTS if s.status == CheckStatus.skip)
         filtered = [s for s in SNAPSHOTS if s.status != CheckStatus.skip]
         rows = [_to_template_row(s) for s in filtered]
+        skip_count_for_header = skip_count if trigger == "report" else 0
 
         subject, html = build_email_html(
-            trigger_kind=trigger, expected=NOW, actual=NOW, rows=rows
+            trigger_kind=trigger,
+            expected=NOW,
+            actual=NOW,
+            rows=rows,
+            skip_count=skip_count_for_header,
         )
         html_path = out_dir / f"{trigger}.html"
         html_path.write_text(html, encoding="utf-8")
 
         teams_cards = build_teams_cards(
-            trigger_kind=trigger, expected=NOW, actual=NOW, rows=rows
+            trigger_kind=trigger,
+            expected=NOW,
+            actual=NOW,
+            rows=rows,
+            skip_count=skip_count_for_header,
         )
         teams_path = out_dir / f"{trigger}_teams.json"
         teams_path.write_text(
@@ -115,12 +125,12 @@ def main() -> None:
 
         status_breakdown = {
             "fail": sum(1 for s in filtered if s.status == CheckStatus.fail),
-            "skip": sum(1 for s in filtered if s.status == CheckStatus.skip),
             "ok": sum(1 for s in filtered if s.status == CheckStatus.ok),
         }
         print(
             f"[{trigger}] {subject}\n"
             f"  본문 카드 status 분포: {status_breakdown}\n"
+            f"  헤더 pill SKIP 카운트: {skip_count_for_header}\n"
             f"  email html : {html_path}\n"
             f"  teams card : {teams_path}\n"
         )

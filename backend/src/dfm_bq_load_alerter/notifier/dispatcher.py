@@ -180,9 +180,11 @@ async def dispatch(
 
     Returns the total number of `alert_events` rows added (sent + failed + skipped).
 
-    SKIP 스냅샷(마감 이전 미적재로 판정 보류)은 점검 알림(check)·일일 리포트(report)
-    모두에서 본문 노이즈이므로 알람에서 제외한다.
+    SKIP 스냅샷(마감 이전 미적재로 판정 보류)은 본문 카드로 렌더하지 않는다.
+    리포트(report)는 헤더 pill 에 SKIP 개수만 노출해 운영자가 보류 상태 규모를
+    인지할 수 있도록 하고, 점검 알림(check)에서는 SKIP 자체를 표기하지 않는다.
     """
+    skip_count = sum(1 for s in snapshots if s.status == CheckStatus.skip)
     snapshots = [s for s in snapshots if s.status != CheckStatus.skip]
     if not snapshots and trigger_kind == "report":
         log.info("dispatch skipped: empty snapshot list for trigger=report")
@@ -192,13 +194,22 @@ async def dispatch(
         log.info("dispatch skipped: no FAIL rows for trigger=check")
         return 0
 
+    skip_count_for_header = skip_count if trigger_kind == "report" else 0
     rows = [_to_template_row(s) for s in snapshots]
     subject, html = build_email_html(
-        trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
+        trigger_kind=trigger_kind,
+        expected=expected,
+        actual=actual,
+        rows=rows,
+        skip_count=skip_count_for_header,
     )
     # Teams Webhook 페이로드 한계 회피를 위해 카드 N 분할 가능.
     teams_cards = build_teams_cards(
-        trigger_kind=trigger_kind, expected=expected, actual=actual, rows=rows
+        trigger_kind=trigger_kind,
+        expected=expected,
+        actual=actual,
+        rows=rows,
+        skip_count=skip_count_for_header,
     )
 
     summary = f"{trigger_kind} · fail={fail_count}/{len(snapshots)}"

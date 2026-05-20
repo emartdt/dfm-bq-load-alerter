@@ -218,8 +218,9 @@ async def test_check_trigger_skip_does_not_leak_into_fail_email(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_report_trigger_excludes_skip_rows(monkeypatch) -> None:
-    """일일 리포트(report): SKIP 스냅샷도 본문에서 제외된다."""
+async def test_report_trigger_excludes_skip_cards_but_shows_pill(monkeypatch) -> None:
+    """일일 리포트(report): SKIP 스냅샷은 본문 카드로 렌더되지 않지만,
+    상단 헤더 pill 에 'SKIP N' 으로 개수만 노출된다."""
     session = _build_session(recipients=["a@example.com"])
     captured: dict[str, str] = {}
 
@@ -235,6 +236,7 @@ async def test_report_trigger_excludes_skip_rows(monkeypatch) -> None:
         snapshots=[
             _snap(CheckStatus.ok, table="OK_T"),
             _snap(CheckStatus.skip, table="SKIP_T"),
+            _snap(CheckStatus.skip, table="SKIP_T2"),
         ],
         trigger_kind="report",
         expected=NOW,
@@ -242,7 +244,37 @@ async def test_report_trigger_excludes_skip_rows(monkeypatch) -> None:
     )
     assert sent == 1
     assert "OK_T" in captured["html"]
+    # SKIP 본문 카드는 없다 — 식별자가 본문에 나타나지 않아야 한다.
     assert "SKIP_T" not in captured["html"]
+    # 상단 pill 에는 'SKIP 2' 가 노출된다.
+    assert "SKIP 2" in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_check_trigger_does_not_show_skip_pill(monkeypatch) -> None:
+    """점검(check) 알림: FAIL 1건 + SKIP 1건 → SKIP 카운트 pill 도 노출하지 않는다."""
+    session = _build_session(recipients=["a@example.com"])
+    captured: dict[str, str] = {}
+
+    async def fake_send_email(*, to, subject, html):
+        captured["html"] = html
+
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.notifier.dispatcher.send_email", fake_send_email
+    )
+
+    sent = await dispatch(
+        session,
+        snapshots=[
+            _snap(CheckStatus.fail, table="FAIL_T"),
+            _snap(CheckStatus.skip, table="SKIP_T"),
+        ],
+        trigger_kind="check",
+        expected=NOW,
+        actual=NOW,
+    )
+    assert sent == 1
+    assert "FAIL_T" in captured["html"]
     assert "SKIP" not in captured["html"]
 
 
