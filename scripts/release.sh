@@ -568,16 +568,22 @@ wait_for_ci() {
   info "CI 통과 대기 (최대 ${CI_TIMEOUT_MIN}분, ${CI_POLL_SEC}초 간격)"
 
   while :; do
-    local status
-    # gh pr checks: 모두 success 면 종료 0, 진행 중이면 종료 8, 실패 시 종료 1
-    if status=$(gh pr checks "${pr_number}" 2>&1); then
+    local status code
+    # gh pr checks: 모두 success 면 종료 0, 진행 중이면 종료 8, 실패 시 종료 1.
+    # PR 생성 직후엔 워크플로우가 아직 등록되지 않아 "no checks reported on the
+    # '...' branch" 로 비-8 코드를 반환할 수 있다 → 타임아웃 내에서는 폴링 지속.
+    #
+    # 주의: `if cmd; then ...; fi` 뒤의 `$?` 는 항상 0 이라 exit code 를 직접
+    # 캡처할 수 없다. `cmd && code=0 || code=$?` 패턴으로 캡처.
+    status=$(gh pr checks "${pr_number}" 2>&1) && code=0 || code=$?
+
+    if [[ ${code} -eq 0 ]]; then
       ok "CI 모두 성공"
       return 0
     fi
-    local code=$?
 
-    if [[ ${code} -eq 8 ]]; then
-      # 진행 중
+    if [[ ${code} -eq 8 ]] || [[ "${status}" == *"no checks reported"* ]]; then
+      # 진행 중 또는 아직 체크 미등록 상태
       [[ $(date +%s) -lt ${deadline} ]] || die "CI 타임아웃 (${CI_TIMEOUT_MIN}분 초과)"
       echo -n "."
       sleep "${CI_POLL_SEC}"
