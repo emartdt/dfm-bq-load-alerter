@@ -189,10 +189,6 @@ _HTML_TEMPLATE = _env.from_string(
   </div>
   {% endif %}
 
-  {% if r.note %}
-  <div style="margin-top:10px;padding:8px 12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;color:#78350f;">📝 {{ r.note }}</div>
-  {% endif %}
-
 </td></tr></table>
 {%- endmacro %}
 
@@ -455,17 +451,6 @@ def _build_card_container(r: TemplateRow, status: str) -> dict[str, Any]:
                 "size": "Small",
                 "wrap": True,
                 "spacing": "None",
-            }
-        )
-    if r.note:
-        items.append(
-            {
-                "type": "TextBlock",
-                "text": f"📝 {r.note}",
-                "isSubtle": True,
-                "size": "Small",
-                "wrap": True,
-                "spacing": "Small",
             }
         )
     return {
