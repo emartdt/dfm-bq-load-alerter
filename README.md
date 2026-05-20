@@ -119,18 +119,6 @@ docker run --rm -p 8000:8000 dfm-bq-load-alerter:dev
 # http://localhost:8000
 ```
 
-## TODO (MVP 이후)
-
-- [ ] 실제 BigQuery load job 모니터링 로직 (`google-cloud-bigquery` SDK)
-- [ ] 알림 채널 연동 (Slack / 사내 알림 시스템)
-- [ ] 알림 임계치·정책 설정 UI
-- [ ] 인증 (FreeIPA/OIDC SSO) — 현재 무인증
-- [ ] Helm chart 를 `datafabric-appcatalog-charts` 로 이전
-- [ ] 와일드카드 TLS 시크릿 자동 복제 메커니즘 (reflector 등)
-- [ ] DFM 문서 작성 (`architecture/dfm-bq-load-alerter.md`, `runbook/`)
-- [ ] 관측성: Prometheus `/metrics`, 구조화 로그
-- [ ] e2e 테스트
-
 ## 위치
 
 - DFM 문서 허브: [`dfm-doc`](https://github.com/emartdt/dfm-doc) — 이 리포지토리는 `repos/dfm-bq-load-alerter/` 경로에 git submodule 로 마운트됨
