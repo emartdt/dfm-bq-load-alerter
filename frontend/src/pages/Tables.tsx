@@ -17,7 +17,7 @@ import {
 } from '../api/tables'
 
 const EMPTY_FORM: TableCreate = {
-  project_id: null,
+  project_id: '',
   dataset: '',
   table_name: '',
   frequency: 'daily',
@@ -123,7 +123,7 @@ export function Tables() {
     const ds = datasetQuery.trim().toLowerCase()
     const tn = tableQuery.trim().toLowerCase()
     return rows.filter((r) => {
-      if (pj && !(r.project_id ?? '').toLowerCase().includes(pj)) return false
+      if (pj && !r.project_id.toLowerCase().includes(pj)) return false
       if (ds && !r.dataset.toLowerCase().includes(ds)) return false
       if (tn && !r.table_name.toLowerCase().includes(tn)) return false
       if (frequencyFilter !== 'all' && r.frequency !== frequencyFilter) return false
@@ -262,11 +262,17 @@ export function Tables() {
       setPreview(null)
       return
     }
+    const pj = form.project_id.trim()
+    if (!pj) {
+      setPreviewError('프로젝트 ID를 먼저 입력하세요.')
+      setPreview(null)
+      return
+    }
     setPreviewBusy(true)
     setPreviewError('')
     setPreview(null)
     try {
-      const result = await previewConditionQuery(q, form.project_id ?? null)
+      const result = await previewConditionQuery(q, pj)
       setPreview(result)
     } catch (err) {
       setPreviewError(describeError(err))
@@ -280,8 +286,14 @@ export function Tables() {
     setBusy(true)
     setError('')
     try {
+      const projectId = form.project_id.trim()
+      if (!projectId) {
+        setError('프로젝트 ID는 필수입니다.')
+        setBusy(false)
+        return
+      }
       const normalized = {
-        project_id: form.project_id?.trim() ? form.project_id.trim() : null,
+        project_id: projectId,
         frequency: form.frequency,
         batch_time: form.batch_time,
         buffer_minutes:
@@ -420,17 +432,11 @@ export function Tables() {
 
         <div className="form-grid">
           <label className="field">
-            <span>
-              프로젝트 ID <span className="field-hint">(빈 값 = 환경 기본)</span>
-            </span>
+            <span>프로젝트 ID</span>
             <input
-              value={form.project_id ?? ''}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  project_id: e.target.value === '' ? null : e.target.value,
-                })
-              }
+              required
+              value={form.project_id}
+              onChange={(e) => setForm({ ...form, project_id: e.target.value })}
               placeholder="emart-datafabric"
             />
           </label>
@@ -840,8 +846,8 @@ export function Tables() {
               className={`row-clickable${editingId === r.id ? ' selected-row' : ''}`}
               onClick={() => onEdit(r)}
             >
-              <td className="muted-cell" title={r.project_id ?? ''}>
-                {r.project_id ?? '(기본)'}
+              <td className="muted-cell" title={r.project_id}>
+                {r.project_id}
               </td>
               <td>{r.dataset}</td>
               <td>{r.table_name}</td>

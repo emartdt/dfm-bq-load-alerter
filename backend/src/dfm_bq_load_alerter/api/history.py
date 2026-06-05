@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 class SnapshotItem(BaseModel):
     id: int
     table_id: int
-    project_id: str | None
+    project_id: str
     dataset: str
     table_name: str
     checked_at: datetime
