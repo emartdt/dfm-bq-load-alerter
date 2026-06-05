@@ -358,9 +358,6 @@ async def build_dispatch_snapshots(
         return []
 
     from dfm_bq_load_alerter.db.models import AlertPolicy
-    from dfm_bq_load_alerter.settings import settings
-
-    fallback_project = settings.bq_project_id or None
 
     policy = await session.get(AlertPolicy, 1)
     fallback_buffer = policy.default_buffer_minutes if policy is not None else 30
@@ -401,7 +398,7 @@ async def build_dispatch_snapshots(
                 note=table.note,
                 today_last_modified=s.last_modified,
                 yesterday_last_modified=yday.last_modified if yday else None,
-                project=table.project_id or fallback_project,
+                project=table.project_id,
                 batch_time=table.batch_time,
                 informational_notes=list(s.informational_notes or []),
                 buffer_minutes=(

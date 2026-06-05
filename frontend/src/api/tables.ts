@@ -4,7 +4,7 @@ export type Frequency = 'daily' | 'monthly'
 
 export interface TableRow {
   id: number
-  project_id: string | null
+  project_id: string
   dataset: string
   table_name: string
   frequency: Frequency
@@ -24,7 +24,7 @@ export interface TableRow {
 }
 
 export interface TableCreate {
-  project_id?: string | null
+  project_id: string
   dataset: string
   table_name: string
   frequency: Frequency
@@ -40,7 +40,7 @@ export interface TableCreate {
 }
 
 export interface TablePatch {
-  project_id?: string | null
+  project_id?: string
   frequency?: Frequency
   batch_time?: string
   buffer_minutes?: number | null
@@ -113,13 +113,11 @@ export interface ConditionQueryPreview {
 
 export async function previewConditionQuery(
   query: string,
-  projectId?: string | null,
+  projectId: string,
 ): Promise<ConditionQueryPreview> {
-  const payload: { query: string; project_id?: string } = { query }
-  if (projectId) payload.project_id = projectId
   const { data } = await api.post<ConditionQueryPreview>(
     '/api/tables/condition-query/preview',
-    payload,
+    { query, project_id: projectId },
   )
   return data
 }

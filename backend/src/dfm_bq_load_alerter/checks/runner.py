@@ -88,10 +88,10 @@ async def _fetch_metadatas_parallel(
     `settings.bq_max_concurrency` to keep API quota usage predictable.
 
     Per-table BigQuery failures are captured (not re-raised) so a single
-    table — e.g. one with an empty `project_id` producing
-    `BadRequest: ProjectId must be non-empty` — does not abort the whole
-    cron cycle. The caller turns each captured exception into a FAIL
-    snapshot with `bq_fetch_error: …` in `failure_reasons`.
+    table — e.g. one referencing a project without access permission —
+    does not abort the whole cron cycle. The caller turns each captured
+    exception into a FAIL snapshot with `bq_fetch_error: …` in
+    `failure_reasons`.
     """
     if not tables:
         return []

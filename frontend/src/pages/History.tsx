@@ -363,7 +363,7 @@ export function History() {
                 <tr key={s.id}>
                   <td className="muted-cell">{new Date(s.checked_at).toLocaleString()}</td>
                   <td>
-                    {s.project_id ?? '(기본)'}.{s.dataset}.{s.table_name}
+                    {s.project_id}.{s.dataset}.{s.table_name}
                   </td>
                   <td>
                     <span className={`status status-${s.status}`}>
