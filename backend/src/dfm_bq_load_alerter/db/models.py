@@ -85,11 +85,11 @@ class Table(Base):
         primary_key=True,
         comment="테이블 PK (자동 증가).",
     )
-    project_id: Mapped[str | None] = mapped_column(
+    project_id: Mapped[str] = mapped_column(
         String(64),
-        nullable=True,
+        nullable=False,
         comment=(
-            "BigQuery 프로젝트 ID. NULL → settings.bq_project_id 폴백. "
+            "BigQuery 프로젝트 ID (필수). "
             "GCP project ID 형식 (소문자/숫자/하이픈, 6~30자)."
         ),
     )

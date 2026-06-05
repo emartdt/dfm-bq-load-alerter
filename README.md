@@ -308,7 +308,7 @@ docker run --rm -p 8000:8000 \
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `DFM_ALERT_BQ_PROJECT_ID` | `""` | GCP 프로젝트 ID |
+| `DFM_ALERT_BQ_PROJECT_ID` | `""` | GCP 프로젝트 ID (운영 스크립트·smoke 테스트용. 테이블 점검은 테이블별 `project_id` 필수 입력값 사용) |
 | `DFM_ALERT_BQ_DATASET_LIST` | `""` | 쉼표 구분 데이터셋 (UI 드롭다운용) |
 | `DFM_ALERT_BQ_CREDENTIALS_PATH` | `/var/secrets/bq-sa/key.json` | BQ SA 키 JSON 경로 |
 | `DFM_ALERT_BQ_MAX_CONCURRENCY` | `5` | BQ 조회 동시 실행 한도 (1–64) |

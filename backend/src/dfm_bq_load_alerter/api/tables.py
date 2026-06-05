@@ -4,7 +4,7 @@ from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from google.cloud import bigquery
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/tables", tags=["tables"])
 class TableIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_id: str | None = Field(default=None, min_length=1, max_length=64)
+    project_id: str = Field(min_length=1, max_length=64)
     dataset: str = Field(min_length=1, max_length=128)
     table_name: str = Field(min_length=1, max_length=128)
     frequency: Frequency
@@ -55,12 +55,19 @@ class TablePatch(BaseModel):
     cond_delta_rowcount: bool | None = None
     active: bool | None = None
 
+    @model_validator(mode="after")
+    def _reject_null_project_id(self) -> TablePatch:
+        """project_id 는 필수 컬럼 — 명시적 null 로 비울 수 없다 (생략은 허용)."""
+        if "project_id" in self.model_fields_set and self.project_id is None:
+            raise ValueError("project_id cannot be set to null")
+        return self
+
 
 class TableOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    project_id: str | None
+    project_id: str
     dataset: str
     table_name: str
     frequency: Frequency
@@ -83,7 +90,7 @@ class ConditionQueryPreviewIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str = Field(min_length=1)
-    project_id: str | None = Field(default=None, min_length=1, max_length=64)
+    project_id: str = Field(min_length=1, max_length=64)
 
 
 class ConditionQueryPreviewOut(BaseModel):
@@ -128,7 +135,7 @@ class BulkTablesIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dataset: str = Field(min_length=1, max_length=128)
-    project_id: str | None = Field(default=None, min_length=1, max_length=64)
+    project_id: str = Field(min_length=1, max_length=64)
     buffer_minutes: int | None = Field(default=None, ge=1, le=1440)
     tables: dict[str, BulkTableEntry] = Field(min_length=1)
 
@@ -313,15 +320,8 @@ async def preview_condition_query(
         else app_settings.condition_query_max_bytes
     )
 
-    project_id = payload.project_id or app_settings.bq_project_id
-    if not project_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="project_id 가 비어 있고 DFM_ALERT_BQ_PROJECT_ID 도 설정되지 않았습니다.",
-        )
-
     try:
-        bq = get_client(project_id)
+        bq = get_client(payload.project_id)
         dry_config = bigquery.QueryJobConfig(
             use_legacy_sql=False, dry_run=True, use_query_cache=False
         )
