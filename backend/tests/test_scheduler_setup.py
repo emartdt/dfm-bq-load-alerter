@@ -90,3 +90,11 @@ def test_check_job_id_format(minute: int, expected_id: str) -> None:
     if minute == 0:
         assert any(j.id == "check-0600" for j in scheduler.get_jobs())
     assert any(j.id == expected_id for j in scheduler.get_jobs())
+
+
+def test_모든_job이_max_instances_2로_등록된다() -> None:
+    """deadline(1차 방어)이 실패해도 다음 firing이 skip되지 않게 하는 2차 방어."""
+    scheduler = build_scheduler()
+    register_jobs(scheduler)
+    for job in scheduler.get_jobs():
+        assert job.max_instances == 2, job.id

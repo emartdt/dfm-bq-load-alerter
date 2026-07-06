@@ -61,7 +61,11 @@ def build_scheduler() -> AsyncIOScheduler:
         timezone=settings.scheduler_timezone,
         job_defaults={
             "coalesce": True,
-            "max_instances": 1,
+            # job 본문에 deadline(_run_with_deadline)이 있어 슬롯이 영구
+            # 점유될 일은 없지만, deadline 회귀 시에도 다음 firing이
+            # skip되지 않도록 1개 여유를 둔다. 값을 키우면 동일 알람이
+            # 중복 발송될 수 있으므로 2를 유지할 것.
+            "max_instances": 2,
         },
     )
 
@@ -88,6 +92,7 @@ def _add_check_job(scheduler: AsyncIOScheduler, moment: time) -> str:
         replace_existing=True,
         misfire_grace_time=settings.misfire_grace_check_seconds,
         coalesce=True,
+        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info("registered job %s @ %02d:%02d KST", job_id, moment.hour, moment.minute)
     return job_id
@@ -107,6 +112,7 @@ def _add_report_job(scheduler: AsyncIOScheduler, moment: time) -> str:
         replace_existing=True,
         misfire_grace_time=settings.misfire_grace_report_seconds,
         coalesce=True,
+        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info("registered job %s @ %02d:%02d KST", job_id, moment.hour, moment.minute)
     return job_id
@@ -124,6 +130,7 @@ def _add_cleanup_job(scheduler: AsyncIOScheduler, moment: time = CLEANUP_TIME) -
         replace_existing=True,
         misfire_grace_time=settings.misfire_grace_report_seconds,
         coalesce=True,
+        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info(
         "registered job %s @ %02d:%02d KST", CLEANUP_JOB_ID, moment.hour, moment.minute
@@ -256,7 +263,7 @@ async def register_dynamic_jobs(scheduler: AsyncIOScheduler) -> None:
         id=POLICY_RELOAD_JOB_ID,
         replace_existing=True,
         coalesce=True,
-        max_instances=1,
+        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info(
         "scheduler: policy poll job registered (every %ds)", POLICY_POLL_SECONDS
