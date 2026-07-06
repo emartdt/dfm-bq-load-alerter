@@ -1,3 +1,5 @@
+import asyncio
+import socket
 from unittest.mock import AsyncMock
 
 import pytest
@@ -55,8 +57,10 @@ async def test_send_email_invokes_aiosmtplib_with_starttls(monkeypatch) -> None:
     assert kwargs["start_tls"] is True
     assert kwargs["username"] == "u"
     assert kwargs["password"] == "p"
-    # local_hostname is omitted when empty so aiosmtplib uses its default
-    assert "local_hostname" not in kwargs
+    # local_hostname 미설정 시에도 항상 전달한다 — aiosmtplib이 내부에서
+    # socket.getfqdn()을 동기 호출해 이벤트 루프를 블록하는 경로를 차단.
+    assert kwargs["local_hostname"] == socket.gethostname()
+    assert kwargs["timeout"] == email_module.settings.smtp_command_timeout_seconds
 
 
 @pytest.mark.asyncio
@@ -108,3 +112,37 @@ async def test_send_email_skips_auth_when_only_user_set(monkeypatch) -> None:
     kwargs = sent.await_args.kwargs
     assert "username" not in kwargs
     assert "password" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_send_email_전송_전체가_상한을_넘으면_TimeoutError(monkeypatch) -> None:
+    """aiosmtplib의 명령당 timeout으로도 못 막는 누적 지연을 전체 상한이 끊는다."""
+    monkeypatch.setattr(email_module.settings, "smtp_host", "smtp.example.com", raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_from_addr", "alerts@dfm.local", raising=False)
+    monkeypatch.setattr(
+        email_module.settings, "smtp_total_timeout_seconds", 0.05, raising=False
+    )
+
+    async def _hangs_forever(*args, **kwargs):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(email_module.aiosmtplib, "send", _hangs_forever)
+
+    with pytest.raises(TimeoutError):
+        await send_email(to=["a@example.com"], subject="s", html="<b>h</b>")
+
+
+@pytest.mark.asyncio
+async def test_send_email_명령당_timeout을_aiosmtplib에_전달(monkeypatch) -> None:
+    monkeypatch.setattr(email_module.settings, "smtp_host", "smtp.example.com", raising=False)
+    monkeypatch.setattr(email_module.settings, "smtp_from_addr", "alerts@dfm.local", raising=False)
+    monkeypatch.setattr(
+        email_module.settings, "smtp_command_timeout_seconds", 7.5, raising=False
+    )
+
+    sent = AsyncMock()
+    monkeypatch.setattr(email_module.aiosmtplib, "send", sent)
+
+    await send_email(to=["a@example.com"], subject="s", html="<b>h</b>")
+
+    assert sent.await_args.kwargs["timeout"] == 7.5

@@ -37,3 +37,11 @@ def test_no_bootstrap_token_field() -> None:
 def test_no_is_oidc_enabled_property() -> None:
     mod = _reload_settings()
     assert not hasattr(mod.settings, "is_oidc_enabled")
+
+
+def test_timeout_기본값() -> None:
+    """SMTP/job timeout 설정 기본값 — spec 2026-07-06-job-timeout-design.md."""
+    mod = _reload_settings()
+    assert mod.settings.smtp_command_timeout_seconds == 10.0
+    assert mod.settings.smtp_total_timeout_seconds == 60.0
+    assert mod.settings.job_timeout_seconds == 600

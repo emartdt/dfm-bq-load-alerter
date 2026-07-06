@@ -8,7 +8,9 @@ Settings used:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import socket
 from email.message import EmailMessage
 
 import aiosmtplib
@@ -39,6 +41,12 @@ async def send_email(*, to: list[str], subject: str, html: str) -> None:
         "hostname": settings.smtp_host,
         "port": settings.smtp_port,
         "start_tls": settings.smtp_use_starttls,
+        # aiosmtplib 기본 timeout(60s)은 '명령당'이라 전송 전체는 무한정
+        # 늘어질 수 있다. 명령당 상한을 짧게 명시한다.
+        "timeout": settings.smtp_command_timeout_seconds,
+        # local_hostname 미지정 시 aiosmtplib이 socket.getfqdn()을 동기
+        # 호출해 DNS 장애 시 이벤트 루프 전체가 멈춘다. 항상 명시한다.
+        "local_hostname": settings.smtp_local_hostname or socket.gethostname(),
     }
     # Only attempt SMTP AUTH when both credentials are present. Otherwise
     # aiosmtplib calls login() and fails with "No suitable authentication
@@ -47,8 +55,6 @@ async def send_email(*, to: list[str], subject: str, html: str) -> None:
     if auth_enabled:
         send_kwargs["username"] = settings.smtp_user
         send_kwargs["password"] = settings.smtp_password
-    if settings.smtp_local_hostname:
-        send_kwargs["local_hostname"] = settings.smtp_local_hostname
 
     log.info(
         "smtp send: host=%s port=%s to=%d subject=%s starttls=%s auth=%s local_hostname=%s",
@@ -58,6 +64,10 @@ async def send_email(*, to: list[str], subject: str, html: str) -> None:
         subject,
         settings.smtp_use_starttls,
         "on" if auth_enabled else "off",
-        settings.smtp_local_hostname or "(default)",
+        send_kwargs["local_hostname"],
     )
-    await aiosmtplib.send(message, **send_kwargs)
+    # 명령당 timeout이 있어도 (명령 수 × timeout)만큼 누적될 수 있으므로
+    # 전송 1회 전체에 상한을 둔다. 초과 시 TimeoutError가 전파되고
+    # dispatcher가 failed 이벤트로 기록한다.
+    async with asyncio.timeout(settings.smtp_total_timeout_seconds):
+        await aiosmtplib.send(message, **send_kwargs)
