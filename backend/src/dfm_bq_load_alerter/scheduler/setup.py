@@ -260,6 +260,7 @@ async def register_dynamic_jobs(scheduler: AsyncIOScheduler) -> None:
         id=POLICY_RELOAD_JOB_ID,
         replace_existing=True,
         coalesce=True,
+        max_instances=1,
     )
     log.info(
         "scheduler: policy poll job registered (every %ds)", POLICY_POLL_SECONDS
