@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     bq_max_concurrency: int = Field(default=5, ge=1, le=64)
     teams_chunk_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
 
+    # 이메일/job 실행 시간 상한. 무한 대기로 스케줄러 슬롯이 영구 점유되는
+    # 것을 막는다 (spec: 2026-07-06-job-timeout-design.md).
+    smtp_command_timeout_seconds: float = Field(default=10.0, ge=1.0, le=300.0)
+    smtp_total_timeout_seconds: float = Field(default=60.0, ge=5.0, le=600.0)
+    job_timeout_seconds: int = Field(default=600, ge=30, le=3600)
+
     @property
     def bq_datasets(self) -> list[str]:
         return [d.strip() for d in self.bq_dataset_list.split(",") if d.strip()]

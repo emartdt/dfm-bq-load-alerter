@@ -90,3 +90,14 @@ def test_check_job_id_format(minute: int, expected_id: str) -> None:
     if minute == 0:
         assert any(j.id == "check-0600" for j in scheduler.get_jobs())
     assert any(j.id == expected_id for j in scheduler.get_jobs())
+
+
+def test_scheduler_기본값이_max_instances_2다() -> None:
+    """deadline(1차 방어)이 실패해도 다음 firing이 skip되지 않게 하는 2차 방어.
+
+    pending job은 scheduler.start() 시점에야 job_defaults를 주입받으므로
+    (apscheduler BaseScheduler._real_add_job), 여기서는 기본값 자체를 검증한다.
+    """
+    scheduler = build_scheduler()
+    assert scheduler._job_defaults["max_instances"] == 2
+    assert scheduler._job_defaults["coalesce"] is True

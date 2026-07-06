@@ -61,7 +61,11 @@ def build_scheduler() -> AsyncIOScheduler:
         timezone=settings.scheduler_timezone,
         job_defaults={
             "coalesce": True,
-            "max_instances": 1,
+            # job 본문에 deadline(_run_with_deadline)이 있어 슬롯이 영구
+            # 점유될 일은 없지만, deadline 회귀 시에도 다음 firing이
+            # skip되지 않도록 1개 여유를 둔다. 값을 키우면 동일 알람이
+            # 중복 발송될 수 있으므로 2를 유지할 것.
+            "max_instances": 2,
         },
     )
 
