@@ -289,3 +289,41 @@ async def test_deadline_이벤트_기록_실패해도_예외를_삼킨다(monkey
     await check_at("check-0800", time(8, 0))  # 예외가 나오면 테스트 실패
 
     assert "failed to record job-timeout event" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_timeout_기록_세션이_hang해도_job이_반환된다(monkeypatch, caplog) -> None:
+    """job timeout의 원인이 DB hang이면 기록 경로도 같은 이유로 멈출 수 있다.
+
+    기록 경로마저 unbounded면 deadline이 무의미해지므로(_RECORD_TIMEOUT_SECONDS),
+    기록용 commit이 hang해도 job은 상한 내에 조용히 반환되어야 한다.
+    """
+    fake_session = _make_timeout_session()
+
+    async def slow_commit(*args, **kwargs):
+        await asyncio.sleep(30)
+
+    fake_session.commit = slow_commit
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs.sessionmaker_factory",
+        MagicMock(return_value=MagicMock(return_value=fake_session)),
+    )
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs.settings.job_timeout_seconds",
+        0.05,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs._RECORD_TIMEOUT_SECONDS", 0.05
+    )
+
+    async def slow_run_checks(*args, **kwargs):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(
+        "dfm_bq_load_alerter.scheduler.jobs.run_checks", slow_run_checks
+    )
+
+    await check_at("check-0800", time(8, 0))  # hang하거나 예외가 나오면 실패
+
+    assert "failed to record job-timeout event" in caplog.text

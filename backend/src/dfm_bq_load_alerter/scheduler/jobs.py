@@ -41,6 +41,11 @@ def _expected_check_datetime(moment: time, *, now: datetime | None = None) -> da
     )
 
 
+# timeout 기록용 세션의 상한. job timeout의 원인이 DB hang이면 기록 경로도
+# 같은 이유로 멈출 수 있다 — 이 경로마저 unbounded면 deadline이 무의미해진다.
+_RECORD_TIMEOUT_SECONDS = 30
+
+
 async def _record_job_timeout(job_id: str, trigger_kind: TriggerKind) -> None:
     """deadline 초과를 alert_events에 남긴다 (best-effort, 새 세션).
 
@@ -48,21 +53,22 @@ async def _record_job_timeout(job_id: str, trigger_kind: TriggerKind) -> None:
     피하기 위한 결정(spec 참고). payload_summary 접두사로 구분한다.
     """
     try:
-        sm = sessionmaker_factory()
-        async with sm() as session:
-            session.add(
-                AlertEvent(
-                    snapshot_id=None,
-                    trigger_kind=trigger_kind,
-                    channel=Channel.email,
-                    status=EventStatus.failed,
-                    payload_summary=f"job timeout · {job_id}",
-                    error=(
-                        f"job deadline exceeded ({settings.job_timeout_seconds}s)"
-                    ),
+        async with asyncio.timeout(_RECORD_TIMEOUT_SECONDS):
+            sm = sessionmaker_factory()
+            async with sm() as session:
+                session.add(
+                    AlertEvent(
+                        snapshot_id=None,
+                        trigger_kind=trigger_kind,
+                        channel=Channel.email,
+                        status=EventStatus.failed,
+                        payload_summary=f"job timeout · {job_id}",
+                        error=(
+                            f"job deadline exceeded ({settings.job_timeout_seconds}s)"
+                        ),
+                    )
                 )
-            )
-            await session.commit()
+                await session.commit()
     except Exception:  # noqa: BLE001 — 기록 실패가 job을 더 죽이면 안 된다
         log.exception("[%s] failed to record job-timeout event", job_id)
 
