@@ -92,7 +92,6 @@ def _add_check_job(scheduler: AsyncIOScheduler, moment: time) -> str:
         replace_existing=True,
         misfire_grace_time=settings.misfire_grace_check_seconds,
         coalesce=True,
-        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info("registered job %s @ %02d:%02d KST", job_id, moment.hour, moment.minute)
     return job_id
@@ -112,7 +111,6 @@ def _add_report_job(scheduler: AsyncIOScheduler, moment: time) -> str:
         replace_existing=True,
         misfire_grace_time=settings.misfire_grace_report_seconds,
         coalesce=True,
-        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info("registered job %s @ %02d:%02d KST", job_id, moment.hour, moment.minute)
     return job_id
@@ -130,7 +128,6 @@ def _add_cleanup_job(scheduler: AsyncIOScheduler, moment: time = CLEANUP_TIME) -
         replace_existing=True,
         misfire_grace_time=settings.misfire_grace_report_seconds,
         coalesce=True,
-        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info(
         "registered job %s @ %02d:%02d KST", CLEANUP_JOB_ID, moment.hour, moment.minute
@@ -263,7 +260,6 @@ async def register_dynamic_jobs(scheduler: AsyncIOScheduler) -> None:
         id=POLICY_RELOAD_JOB_ID,
         replace_existing=True,
         coalesce=True,
-        max_instances=scheduler._job_defaults['max_instances'],
     )
     log.info(
         "scheduler: policy poll job registered (every %ds)", POLICY_POLL_SECONDS
