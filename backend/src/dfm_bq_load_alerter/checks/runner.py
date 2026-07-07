@@ -146,7 +146,7 @@ async def _fetch_metadatas_parallel(
                     "bq fetch timeout: %s took=%.2fs attempts=%d exhausted",
                     label, elapsed, max_retries,
                 )
-                raise last_exc
+                raise last_exc from None
             except Exception:
                 fail_count += 1
                 elapsed = time.perf_counter() - started
