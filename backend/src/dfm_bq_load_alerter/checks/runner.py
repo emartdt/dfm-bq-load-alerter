@@ -110,17 +110,43 @@ async def _fetch_metadatas_parallel(
     async def _one(table: Table) -> TableMetadata:
         nonlocal ok_count, fail_count
         label = f"{table.dataset}.{table.table_name}"
-        started = time.perf_counter()
-        async with sem:
+        max_retries = settings.bq_fetch_max_retries
+        per_timeout = settings.bq_per_table_timeout_seconds
+        last_exc: BaseException | None = None
+
+        for attempt in range(1, max_retries + 1):
+            started = time.perf_counter()
             try:
-                meta = await asyncio.to_thread(
-                    fetch_metadata,
-                    table.dataset,
-                    table.table_name,
-                    project_id=table.project_id,
-                    row_count_query=table.condition_query,
-                    row_count_query_max_bytes=row_count_query_max_bytes,
+                async with sem:
+                    async with asyncio.timeout(per_timeout):
+                        meta = await asyncio.to_thread(
+                            fetch_metadata,
+                            table.dataset,
+                            table.table_name,
+                            project_id=table.project_id,
+                            row_count_query=table.condition_query,
+                            row_count_query_max_bytes=row_count_query_max_bytes,
+                        )
+            except TimeoutError:
+                elapsed = time.perf_counter() - started
+                last_exc = TimeoutError(
+                    f"{label}: {per_timeout}s 초과 "
+                    f"(시도 {attempt}/{max_retries})"
                 )
+                if attempt < max_retries:
+                    backoff = min(2 ** attempt, 10)
+                    log.warning(
+                        "bq fetch timeout: %s took=%.2fs attempt=%d/%d — %ds 후 재시도",
+                        label, elapsed, attempt, max_retries, backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                fail_count += 1
+                log.error(
+                    "bq fetch timeout: %s took=%.2fs attempts=%d exhausted",
+                    label, elapsed, max_retries,
+                )
+                raise last_exc from None
             except Exception:
                 fail_count += 1
                 elapsed = time.perf_counter() - started
@@ -128,13 +154,16 @@ async def _fetch_metadatas_parallel(
                     "bq fetch fail: %s took=%.2fs", label, elapsed
                 )
                 raise
-        ok_count += 1
-        elapsed = time.perf_counter() - started
-        rows = meta.row_count if meta.row_count is not None else "?"
-        log.info(
-            "bq fetch ok: %s rows=%s took=%.2fs", label, rows, elapsed
-        )
-        return meta
+            ok_count += 1
+            elapsed = time.perf_counter() - started
+            rows = meta.row_count if meta.row_count is not None else "?"
+            log.info(
+                "bq fetch ok: %s rows=%s took=%.2fs", label, rows, elapsed
+            )
+            return meta
+
+        assert last_exc is not None
+        raise last_exc
 
     try:
         return await asyncio.gather(
@@ -203,19 +232,34 @@ async def run_checks(
     snapshots: list[CheckSnapshot] = []
     for table, metadata in zip(eligible, metadatas, strict=True):
         if isinstance(metadata, BaseException):
-            snapshot = CheckSnapshot(
-                table_id=table.id,
-                checked_at=actual,
-                expected_check_time=expected,
-                row_count=None,
-                last_modified=None,
-                status=CheckStatus.fail,
-                failure_reasons=[
-                    f"BigQuery 호출 실패: {type(metadata).__name__}: {metadata}"
-                ],
-                informational_notes=[],
-                delta_percent_vs_yesterday=None,
-            )
+            if isinstance(metadata, TimeoutError):
+                snapshot = CheckSnapshot(
+                    table_id=table.id,
+                    checked_at=actual,
+                    expected_check_time=expected,
+                    row_count=None,
+                    last_modified=None,
+                    status=CheckStatus.skip,
+                    failure_reasons=[],
+                    informational_notes=[
+                        f"BQ 조회 시간 초과 (대기중): {metadata}"
+                    ],
+                    delta_percent_vs_yesterday=None,
+                )
+            else:
+                snapshot = CheckSnapshot(
+                    table_id=table.id,
+                    checked_at=actual,
+                    expected_check_time=expected,
+                    row_count=None,
+                    last_modified=None,
+                    status=CheckStatus.fail,
+                    failure_reasons=[
+                        f"BigQuery 호출 실패: {type(metadata).__name__}: {metadata}"
+                    ],
+                    informational_notes=[],
+                    delta_percent_vs_yesterday=None,
+                )
             session.add(snapshot)
             snapshots.append(snapshot)
             continue
