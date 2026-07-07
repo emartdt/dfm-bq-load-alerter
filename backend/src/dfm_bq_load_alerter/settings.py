@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     misfire_grace_report_seconds: int = Field(default=600)
     condition_query_max_bytes: int = Field(default=104857600)
     bq_max_concurrency: int = Field(default=5, ge=1, le=64)
+    bq_per_table_timeout_seconds: int = Field(default=120, ge=10, le=600)
+    bq_fetch_max_retries: int = Field(default=3, ge=1, le=10)
     teams_chunk_delay_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
 
     # 이메일/job 실행 시간 상한. 무한 대기로 스케줄러 슬롯이 영구 점유되는
