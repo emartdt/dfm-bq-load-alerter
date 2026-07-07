@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import ssl
 from email.message import EmailMessage
 
 import aiosmtplib
@@ -48,9 +49,14 @@ async def send_email(*, to: list[str], subject: str, html: str) -> None:
         # 호출해 DNS 장애 시 이벤트 루프 전체가 멈춘다. 항상 명시한다.
         "local_hostname": settings.smtp_local_hostname or socket.gethostname(),
     }
-    # Only attempt SMTP AUTH when both credentials are present. Otherwise
-    # aiosmtplib calls login() and fails with "No suitable authentication
-    # method found." against unauthenticated internal relays.
+    if settings.smtp_use_starttls:
+        # 사내 Exchange 인증서가 email.shinsegae.ai 도메인과 불일치 —
+        # hostname 검증을 비활성화한다.
+        tls_context = ssl.create_default_context()
+        tls_context.check_hostname = False
+        tls_context.verify_mode = ssl.CERT_NONE
+        send_kwargs["tls_context"] = tls_context
+
     auth_enabled = bool(settings.smtp_user and settings.smtp_password)
     if auth_enabled:
         send_kwargs["username"] = settings.smtp_user
